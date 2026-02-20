@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hunter System — Тренування</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap topbar__inner">
+      <div class="brand">
+        <div class="brand__logo">HS</div>
+        <div class="brand__text">
+          <div class="brand__title">Hunter System</div>
+          <div class="brand__tag">Тренування</div>
+        </div>
+      </div>
+
+      <button class="menuBtn" id="menuBtn" aria-label="Меню" aria-expanded="false" aria-controls="mobileNav">
+        <span></span><span></span><span></span>
+      </button>
+
+      <nav class="nav nav--desktop" aria-label="Навігація">
+        <a class="nav__link" href="index.html">Головна</a>
+        <a class="nav__link" href="hunters.html">Ханти</a>
+        <a class="nav__link" href="training.html">Тренування</a>
+        <a class="nav__link" href="direction.html">Напрям</a>
+        <a class="nav__link" href="cults.html">Культи</a>
+      </nav>
+    </div>
+
+    <nav class="nav nav--mobile" id="mobileNav" aria-label="Мобільна навігація">
+      <a class="nav__link" href="index.html">Головна</a>
+      <a class="nav__link" href="hunters.html">Ханти</a>
+      <a class="nav__link" href="training.html">Тренування</a>
+      <a class="nav__link" href="direction.html">Напрям</a>
+        <a class="nav__link" href="cults.html">Культи</a>
+    </nav>
+  </header>
+
+  <main class="wrap main" id="trainingPageRoot">
+    <section class="stack">
+      <article class="card">
+        <h1 class="h1">Тренування</h1>
+        <p class="sub" id="hunterHint">—</p>
+
+        <div class="grid2">
+          <div class="kpi">
+            <div class="kpi__label">Обраний хант</div>
+            <div class="kpi__value">
+              <select id="hunterSelect" style="width:100%; padding:10px 12px; border-radius:14px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.03); color:var(--text)"></select>
+            </div>
+          </div>
+          <div class="kpi">
+            <div class="kpi__label">Відкат кнопки</div>
+            <div class="kpi__value kpi__value--mono" id="trainCooldown">00:00:00</div>
+          </div>
+        </div>
+
+        <div class="note">
+          <div class="note__title">Як працює</div>
+          <div class="note__text">TEST: 1 натискання = 2 секунди (перевірка таймерів). Нарахування одразу (TEST таймер 2с).</div>
+        </div>
+
+        <div class="hr"></div>
+
+        <h2 class="h2">Базові комплекси</h2>
+        <p class="sub">Кожен цикл дає 2–5 очок. Розподіл: 60% / 30% / 10%. Дроби зберігаються.</p>
+
+        <div class="list" id="complexList" style="flex-direction:row; flex-wrap:wrap; gap:10px"></div>
+
+        <div class="note" style="margin-top:12px">
+          <div class="note__title">Деталі</div>
+          <div class="note__text" id="trainDetails">—</div>
+        </div>
+
+        <button class="btn btn--primary btn--full" id="trainBtn" style="margin-top:12px">Тренувати (12 год)</button>
+      </article>
+    </section>
+  </main>
+
+  
+  <div class="modal" id="riskModal" aria-hidden="true">
+    <div class="modal__backdrop" data-close></div>
+    <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="riskTitle">
+      <h2 class="h2" id="riskTitle">Ризик</h2>
+      <p class="sub" id="riskText">—</p>
+      <div class="actions">
+        <button class="btn" id="riskStopBtn" data-close>Зупинитись</button>
+        <button class="btn btn--primary" id="riskContinueBtn">Продовжити</button>
+      </div>
+    </div>
+  </div>
+
+
+  <div class="toast" id="toast">—</div>
+
+  <footer class="footer">
+    <div class="wrap footer__inner">
+      <span>v0.2</span><span class="dot">•</span><span>Training</span>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

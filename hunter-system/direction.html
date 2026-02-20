@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hunter System — Напрям</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap topbar__inner">
+      <div class="brand">
+        <div class="brand__logo">HS</div>
+        <div class="brand__text">
+          <div class="brand__title">Hunter System</div>
+          <div class="brand__tag">Напрям</div>
+        </div>
+      </div>
+
+      <button class="menuBtn" id="menuBtn" aria-label="Меню" aria-expanded="false" aria-controls="mobileNav">
+        <span></span><span></span><span></span>
+      </button>
+
+      <nav class="nav nav--desktop" aria-label="Навігація">
+        <a class="nav__link" href="index.html">Головна</a>
+        <a class="nav__link" href="hunters.html">Ханти</a>
+        <a class="nav__link" href="training.html">Тренування</a>
+        <a class="nav__link" href="direction.html">Напрям</a>
+        <a class="nav__link" href="cults.html">Культи</a>
+      </nav>
+    </div>
+
+    <nav class="nav nav--mobile" id="mobileNav" aria-label="Мобільна навігація">
+      <a class="nav__link" href="index.html">Головна</a>
+      <a class="nav__link" href="hunters.html">Ханти</a>
+      <a class="nav__link" href="training.html">Тренування</a>
+      <a class="nav__link" href="direction.html">Напрям</a>
+        <a class="nav__link" href="cults.html">Культи</a>
+    </nav>
+  </header>
+
+  <main class="wrap main" id="directionPageRoot">
+    <section class="stack">
+      <article class="card">
+        <h1 class="h1">Напрям</h1>
+        <p class="sub">Спеціалізація вибирається 1 раз. Дає профільний параметр, який залежить від ключових статів + профілю + ступеня.</p>
+
+        <div class="grid2">
+          <div class="kpi">
+            <div class="kpi__label">Обраний хант</div>
+            <div class="kpi__value">
+              <select id="dirHunterSelect" style="width:100%; padding:10px 12px; border-radius:14px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.03); color:var(--text)"></select>
+            </div>
+          </div>
+          <div class="kpi">
+            <div class="kpi__label">Поточна спец</div>
+            <div class="kpi__value" style="font-size:14px; font-weight:800; color:var(--muted)" id="currentSpecBox">—</div>
+          </div>
+        </div>
+
+        <button class="btn btn--primary btn--full" id="applySpecBtn" style="margin-top:12px">Застосувати обрану спец (1 раз)</button>
+
+        <div class="note note--warn">
+          <div class="note__title">Формула</div>
+          <div class="note__text">
+            P = (Stat1×0.6 + Stat2×0.3 + Stat3×0.1)<br>
+            Final = (P + Profile) × (1 + бонус ступеня)
+          </div>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="row">
+          <h2 class="h2">Список спеціалізацій</h2>
+          <div class="pill">Відкрий → вибери</div>
+        </div>
+        <div class="list" id="specList"></div>
+      </article>
+    </section>
+  </main>
+
+  
+  <div class="modal" id="riskModal" aria-hidden="true">
+    <div class="modal__backdrop" data-close></div>
+    <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="riskTitle">
+      <h2 class="h2" id="riskTitle">Ризик</h2>
+      <p class="sub" id="riskText">—</p>
+      <div class="actions">
+        <button class="btn" id="riskStopBtn" data-close>Зупинитись</button>
+        <button class="btn btn--primary" id="riskContinueBtn">Продовжити</button>
+      </div>
+    </div>
+  </div>
+
+
+  <div class="toast" id="toast">—</div>
+
+  <footer class="footer">
+    <div class="wrap footer__inner">
+      <span>v0.2</span><span class="dot">•</span><span>Direction</span>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

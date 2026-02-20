@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hunter System — Ханти</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap topbar__inner">
+      <div class="brand">
+        <div class="brand__logo">HS</div>
+        <div class="brand__text">
+          <div class="brand__title">Hunter System</div>
+          <div class="brand__tag">Ханти</div>
+        </div>
+      </div>
+
+      <button class="menuBtn" id="menuBtn" aria-label="Меню" aria-expanded="false" aria-controls="mobileNav">
+        <span></span><span></span><span></span>
+      </button>
+
+      <nav class="nav nav--desktop" aria-label="Навігація">
+        <a class="nav__link" href="index.html">Головна</a>
+        <a class="nav__link" href="hunters.html">Ханти</a>
+        <a class="nav__link" href="training.html">Тренування</a>
+        <a class="nav__link" href="direction.html">Напрям</a>
+        <a class="nav__link" href="cults.html">Культи</a>
+      </nav>
+    </div>
+
+    <nav class="nav nav--mobile" id="mobileNav" aria-label="Мобільна навігація">
+      <a class="nav__link" href="index.html">Головна</a>
+      <a class="nav__link" href="hunters.html">Ханти</a>
+      <a class="nav__link" href="training.html">Тренування</a>
+      <a class="nav__link" href="direction.html">Напрям</a>
+        <a class="nav__link" href="cults.html">Культи</a>
+    </nav>
+  </header>
+
+  <main class="wrap main">
+    <section class="stack">
+      <article class="card">
+        <h1 class="h1">Ханти</h1>
+        <p class="sub">Генерація: рандом 5–31, максимум 2 ханти. Після генерації ім’я вводиться 1 раз.</p>
+
+        <div class="grid2">
+          <div class="kpi">
+            <div class="kpi__label">У списку</div>
+            <div class="kpi__value"><span id="huntersCount">0</span>/2</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi__label">Наступна генерація</div>
+            <div class="kpi__value kpi__value--mono" id="cooldownText">00:00:00</div>
+          </div>
+        </div>
+
+        <button class="btn btn--primary btn--full" id="generateBtn">Згенерувати ханта</button>
+
+        <div class="note note--warn">
+          <div class="note__title">Пороги ефективності</div>
+          <div class="note__text">35–40: ×0.8 • 50–59: ×0.5 • 60+: ×0.2 (між 41–49: ×0.6)</div>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="row">
+          <h2 class="h2">Список</h2>
+          <div class="pill">Натисни ханта → відкриється (анімація)</div>
+        </div>
+
+        <div class="empty" id="emptyState">Поки пусто. Згенеруй першого ханта.</div>
+        <div class="list" id="hunterList"></div>
+      </article>
+    </section>
+  </main>
+
+  <div class="modal" id="nameModal" aria-hidden="true">
+    <div class="modal__backdrop" data-close></div>
+    <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="nameTitle">
+      <h2 class="h2" id="nameTitle">Назви ханта (1 раз)</h2>
+      <p class="sub">Після підтвердження ім’я змінити не можна.</p>
+
+      <label class="field">
+        <span class="field__label">Ім’я</span>
+        <input class="field__input" id="nameInput" maxlength="18" placeholder="Напр: Arch">
+      </label>
+
+      <div class="actions">
+        <button class="btn" id="cancelNameBtn" data-close>Скасувати</button>
+        <button class="btn btn--primary" id="saveNameBtn">Зберегти</button>
+      </div>
+    </div>
+  </div>
+
+  
+  <div class="modal" id="riskModal" aria-hidden="true">
+    <div class="modal__backdrop" data-close></div>
+    <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="riskTitle">
+      <h2 class="h2" id="riskTitle">Ризик</h2>
+      <p class="sub" id="riskText">—</p>
+      <div class="actions">
+        <button class="btn" id="riskStopBtn" data-close>Зупинитись</button>
+        <button class="btn btn--primary" id="riskContinueBtn">Продовжити</button>
+      </div>
+    </div>
+  </div>
+
+
+  
+  <div class="modal" id="traitModal" aria-hidden="true">
+    <div class="modal__backdrop" data-trait-close></div>
+    <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="traitTitle">
+      <h2 class="h2" id="traitTitle">Особливість</h2>
+      <p class="sub" id="traitSub">—</p>
+
+      <div class="note" style="margin-top:10px">
+        <div class="note__title">Вибір</div>
+        <div class="note__text">Обираєш 1 раз. Прокачка: раз на 30 хв.</div>
+        <select id="traitSelect" class="input" style="margin-top:10px"></select>
+      </div>
+
+      <div class="actions" style="margin-top:14px">
+        <button class="btn" id="traitCloseBtn" data-trait-close>Закрити</button>
+        <button class="btn btn--primary" id="traitPickBtn">Вибрати</button>
+        <button class="btn btn--primary" id="traitTrainBtn">Прокачати</button>
+      </div>
+    </div>
+  </div>
+
+
+  <div class="toast" id="toast">—</div>
+
+  <footer class="footer">
+    <div class="wrap footer__inner">
+      <span>v0.2</span><span class="dot">•</span><span>Hunters</span>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
