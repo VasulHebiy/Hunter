@@ -195,13 +195,16 @@ a{color:inherit}
 .chev svg{width:16px; height:16px; opacity:.9}
 .item__body{
   max-height:0;
+  overflow:hidden;
   opacity:0;
   transform: translateY(-4px);
   transition: max-height .26s ease, opacity .18s ease, transform .18s ease, padding .18s ease;
   padding:0 12px;
 }
 .item--open .item__body{
-  max-height: 900px;
+  max-height: 70vh;
+  overflow:auto;
+  -webkit-overflow-scrolling: touch;
   opacity:1;
   transform: translateY(0);
   padding: 0 12px 12px;

@@ -204,7 +204,80 @@
   function getTraitMeta(id){
     return TRAITS.find(t => t.id === id) || null;
   }
-  function traitRankName(type, r){
+  
+  // ===== Trait Effects (mechanics) =====
+  // Effects are percentage modifiers to effective stats (base points stay in h.stats).
+  // rank: 0..4  (vice: Легка..Критична, skill: Початківець..Професійний)
+  const TRAIT_EFFECTS = {
+    // Vices (negative, sometimes mixed)
+    alcohol:   (r)=>({ int: -0.03*(r+1), rea: -0.02*(r+1), wil: -0.02*(r+1) }),
+    drugs:     (r)=>({ sta: -0.04*(r+1), wil: -0.03*(r+1), rea: +0.01*(r+1) }),
+    smoker:    (r)=>({ sta: -0.03*(r+1), rea: -0.01*(r+1) }),
+    insomnia:  (r)=>({ sta: -0.03*(r+1), int: -0.02*(r+1), rea: -0.01*(r+1) }),
+    nervous:   (r)=>({ wil: -0.03*(r+1), rea: -0.02*(r+1) }),
+    anxiety:   (r)=>({ wil: -0.03*(r+1), per: -0.01*(r+1) }),
+    stress:    (r)=>({ int: -0.02*(r+1), wil: -0.02*(r+1) }),
+    depression:(r)=>({ wil: -0.04*(r+1), int: -0.02*(r+1) }),
+    panic:     (r)=>({ wil: -0.04*(r+1), rea: -0.03*(r+1) }),
+    paranoia:  (r)=>({ wil: -0.03*(r+1), per: +0.01*(r+1), rea: -0.01*(r+1) }),
+    reckless:  (r)=>({ rea: +0.01*(r+1), per: -0.03*(r+1), wil: -0.01*(r+1) }),
+    gluttony:  (r)=>({ sta: -0.02*(r+1), agi: -0.02*(r+1) }),
+    greed:     (r)=>({ wil: -0.02*(r+1), int: -0.01*(r+1) }),
+    impulsive: (r)=>({ rea: +0.01*(r+1), wil: -0.03*(r+1) }),
+    tremor:    (r)=>({ per: -0.03*(r+1), rea: -0.02*(r+1) }),
+    migraine:  (r)=>({ int: -0.03*(r+1), per: -0.02*(r+1) }),
+    halluc:    (r)=>({ per: -0.04*(r+1), wil: -0.02*(r+1) }),
+    ptsd:      (r)=>({ wil: -0.03*(r+1), rea: -0.02*(r+1) }),
+    apathy:    (r)=>({ wil: -0.04*(r+1), sta: -0.02*(r+1) }),
+    anger:     (r)=>({ wil: -0.03*(r+1), str: +0.01*(r+1) }),
+
+    // Skills (positive)
+    shooter:   (r)=>({ per: +0.02*(r+1), rea: +0.01*(r+1) }),
+    sniper:    (r)=>({ per: +0.03*(r+1) }),
+    medic:     (r)=>({ int: +0.02*(r+1), per: +0.01*(r+1) }),
+    paramedic: (r)=>({ int: +0.01*(r+1), rea: +0.01*(r+1) }),
+    fieldmed:  (r)=>({ int: +0.02*(r+1) }),
+    firstaid:  (r)=>({ int: +0.01*(r+1) }),
+    veteran:   (r)=>({ wil: +0.02*(r+1), rea: +0.01*(r+1) }),
+    military:  (r)=>({ wil: +0.01*(r+1), str: +0.01*(r+1) }),
+    boxer:     (r)=>({ str: +0.02*(r+1), rea: +0.01*(r+1) }),
+    wrestler:  (r)=>({ str: +0.01*(r+1), sta: +0.02*(r+1) }),
+    scout:     (r)=>({ per: +0.02*(r+1), agi: +0.01*(r+1) }),
+    tracker:   (r)=>({ per: +0.03*(r+1) }),
+    hacker:    (r)=>({ int: +0.03*(r+1) }),
+    tactician: (r)=>({ int: +0.02*(r+1), per: +0.01*(r+1) }),
+    leader:    (r)=>({ wil: +0.02*(r+1) }),
+    survivor:  (r)=>({ sta: +0.02*(r+1), wil: +0.01*(r+1) }),
+    balance:   (r)=>({ agi: +0.02*(r+1) }),
+    reflex:    (r)=>({ rea: +0.03*(r+1) }),
+    discipline:(r)=>({ wil: +0.03*(r+1) }),
+    memory:    (r)=>({ int: +0.02*(r+1) }),
+  };
+
+  function computeEffectiveStats(h){
+    const eff = {};
+    STATS.forEach(s => eff[s.key] = Number(h.stats?.[s.key]) || 0);
+
+    const list = Array.isArray(h.traits) ? h.traits : [];
+    for (const tr of list){
+      const fn = TRAIT_EFFECTS[tr.id];
+      if (!fn) continue;
+      const r = Number(tr.rank||0);
+      const delta = fn(r) || {};
+      for (const [k,p] of Object.entries(delta)){
+        if (!(k in eff)) continue;
+        eff[k] = eff[k] * (1 + p);
+      }
+    }
+
+    // clamp to sane minimum
+    STATS.forEach(s=>{
+      if (eff[s.key] < 0) eff[s.key] = 0;
+    });
+    return eff;
+  }
+
+function traitRankName(type, r){
     const idx = Math.max(0, Math.min(4, Number(r)||0));
     if (type === "vice") return ["Легка","Середня","Сильна","Хронічна","Критична"][idx];
     return ["Початківець","Практикант","Любитель","Вмілий","Професійний"][idx];
@@ -463,15 +536,18 @@
 
   // ===== Core recompute =====
   function recomputeHunter(h){
-    const sum = STATS.reduce((a,s)=>a + (Number(h.stats[s.key])||0), 0);
+    // effective stats (traits affect results)
+    h.eStats = computeEffectiveStats(h);
+
+    const sum = STATS.reduce((a,s)=>a + (Number(h.eStats[s.key])||0), 0);
     h.avg = +(sum / STATS.length).toFixed(2);
     h.tier = calcTier(h.avg);
-    h.mana = Math.round((Number(h.stats.int)||0) * 5);
+    h.mana = Math.round((Number(h.eStats.int)||0) * 5);
 
     if (h.specId){
       const spec = SPECS.find(x=>x.id===h.specId);
       if (spec){
-        const P = spec.keys.reduce((a,[k,w]) => a + (Number(h.stats[k])||0)*w, 0);
+        const P = spec.keys.reduce((a,[k,w]) => a + (Number(h.eStats[k])||0)*w, 0);
         const baseProfile = (P + (Number(h.profile)||0)) * tierBonus(h.tier);
         h.specParamName = spec.param;
         h.specPower = +baseProfile.toFixed(2);
@@ -897,7 +973,7 @@
 
             <div class="statsGrid">
               ${STATS.map(s => {
-                const val = Number(h.stats[s.key]) || 0;
+                const val = Number((h.eStats && h.eStats[s.key]) ?? h.stats[s.key]) || 0;
                 const meaning = statMeaning(s.key, val);
                 return `
                   <div class="kv">
@@ -921,7 +997,7 @@
 
       const c = canGenerate();
       genBtn.disabled = !c.ok;
-      genBtn.textContent = (!c.ok && c.reason==="MAX") ? "Ліміт 2 ханти" : "Згенерувати ханта";
+      genBtn.textContent = (!c.ok && c.reason==="MAX") ? "Ліміт 5 хантів" : "Згенерувати ханта";
 
       // store selected hunter when clicking Cults link
       list.querySelectorAll("[data-setsel]").forEach(a=>{
