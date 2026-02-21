@@ -191,12 +191,6 @@
     ];
   }
 
-  function getBranchDisplayName(specId, branchId){
-    const branches = getBranchesForSpec(specId);
-    const b = (branches||[]).find(x=>x.id===branchId);
-    return b ? b.name : branchId;
-  }
-
   function buildBranchSkills(specId, branchId){
     const db = (typeof window !== "undefined") ? window.SKILLS_DB : null;
     const isMagic = isMagicSpec(specId);
@@ -745,25 +739,8 @@ function getUnlockedSkills(h){
     return out;
   });
 }
-
-  function hunterToTxt(h){
-    const lines = [];
-
-    const name = h.name ? h.name : 'Без імені';
-    lines.push('== Хант ==');
-    lines.push(`Ім'я: ${name}`);
-    lines.push(`ID: ${h.id}`);
-    lines.push(`Ступінь: ${h.tier}`);
-    lines.push(`Середній стат: ${h.avg}`);
-    lines.push('');
-
-    lines.push('== Стати (з розшифровкою) ==');
-    STATS.forEach(s=>{
-      const v = Number((h.stats||{})[s.key]) || 0;
-      lines.push(`${s.name}: ${v.toFixed(2)} | ${statMeaning(s.key, v)}`);
-    });
-
-    lines.push('');
+);
+lines.push("");
 lines.push("== Очки розуму ==");
 lines.push(`Очки розуму: ${Math.round(Number(h.mind)||0)}`);
 lines.push("");
@@ -815,7 +792,7 @@ if (Array.isArray(h.traits) && h.traits.length){
     const rn = traitRankName(type, tr.rank);
     const mainName = (STATS.find(s=>s.key===eff.main)?.name) || eff.main;
     const subName = eff.sub ? ((STATS.find(s=>s.key===eff.sub)?.name) || eff.sub) : "";
-    lines.push(`• ${tr.name || (meta?meta.name:tr.id)} (${rn})`);
+    lines.push(`• ${tr.name} (${rn})`);
     if (type==="vice"){
       lines.push(`  Ефект: -2%/рівень до ${mainName} • +очки розуму (пасивно)`);
     } else {

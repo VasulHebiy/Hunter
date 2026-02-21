@@ -202,9 +202,8 @@ a{color:inherit}
   padding:0 12px;
 }
 .item--open .item__body{
-  max-height: 70vh;
+  max-height: min(70vh, 640px);
   overflow:auto;
-  -webkit-overflow-scrolling: touch;
   opacity:1;
   transform: translateY(0);
   padding: 0 12px 12px;
@@ -317,4 +316,54 @@ a{color:inherit}
 
 @media (max-width: 420px){
   .kv__v{font-size:16px}
+}
+
+
+/* ===== Branch & Skills ===== */
+.branchBox{border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:12px; margin-top:12px; background:rgba(255,255,255,.03)}
+.branchHead{display:flex; align-items:center; justify-content:space-between; gap:10px}
+.branchTitle{font-weight:900; font-size:14px}
+.branchMeta{color:var(--muted); font-size:12px; margin-top:6px; line-height:1.35}
+.branchPills{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px}
+.pill{padding:6px 10px; border-radius:999px; border:1px solid rgba(255,255,255,.10); font-size:12px; font-weight:800; color:var(--text)}
+.pill--good{background:rgba(66, 211, 146, .10)}
+.pill--warn{background:rgba(245, 158, 11, .10)}
+.skills{margin-top:12px; display:flex; flex-direction:column; gap:8px}
+.skill{border:1px solid rgba(255,255,255,.08); border-radius:14px; overflow:hidden; background:rgba(255,255,255,.02)}
+.skill__btn{width:100%; text-align:left; background:transparent; border:0; color:var(--text); padding:10px 12px; display:flex; align-items:center; justify-content:space-between; gap:10px; cursor:pointer}
+.skill__name{font-weight:900; font-size:13px}
+.skill__right{display:flex; align-items:center; gap:8px; color:var(--muted); font-size:12px; font-weight:800}
+.skill__body{max-height:0; overflow:hidden; transition:max-height .22s ease; padding:0 12px}
+.skill--open .skill__body{max-height:240px; padding:0 12px 12px}
+.skill__desc{color:var(--muted); font-size:12px; line-height:1.4; margin-top:8px}
+.skill__actions{display:flex; gap:10px; flex-wrap:wrap; margin-top:10px}
+.btn--mini{padding:8px 10px; border-radius:12px; font-size:12px; font-weight:900}
+
+
+/* Appearance inputs */
+.formGrid{
+  display:grid;
+  grid-template-columns: 1fr;
+  gap:10px;
+}
+@media (min-width: 520px){
+  .formGrid{ grid-template-columns: 1fr 1fr; }
+}
+.field{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  font-size:12px;
+  color:var(--muted);
+}
+.input{
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.2);
+  color: var(--text);
+  outline:none;
+}
+.input:focus{
+  border-color: rgba(255,255,255,0.26);
 }

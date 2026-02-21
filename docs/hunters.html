@@ -43,12 +43,12 @@
     <section class="stack">
       <article class="card">
         <h1 class="h1">Ханти</h1>
-        <p class="sub">Генерація: рандом 5–31, максимум 5 хантів. Після генерації ім’я вводиться 1 раз.</p>
+        <p class="sub">Генерація: рандом 5–31, максимум <span id="maxHuntersText">5</span> ханти. Після генерації ім’я вводиться 1 раз.</p>
 
         <div class="grid2">
           <div class="kpi">
             <div class="kpi__label">У списку</div>
-            <div class="kpi__value"><span id="huntersCount">0</span>/2</div>
+            <div class="kpi__value"><span id="huntersCount">0</span>/<span id="huntersMax">5</span></div>
           </div>
           <div class="kpi">
             <div class="kpi__label">Наступна генерація</div>
@@ -138,6 +138,7 @@
     </div>
   </footer>
 
+  <script src="skills.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
