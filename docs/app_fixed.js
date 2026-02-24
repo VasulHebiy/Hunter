@@ -12,9 +12,9 @@
 
     // Timers (REAL)
     GEN_COOLDOWN_MS: 12 * 60 * 60 * 1000,        // 12h generation cooldown
-    TRAIN_COOLDOWN_MS: 14 * 60 * 60 * 1000,      // 12h training + 2h rest
-    TRAIT_GAIN_COOLDOWN_MS: 30 * 60 * 1000,      // 30m get a trait
-    TRAIT_TRAIN_COOLDOWN_MS: 30 * 60 * 1000,     // 30m train a trait
+    TRAIN_COOLDOWN_MS: 14 * 60 * 60 * 1000,      // 12h training + 2h rest,      // 12h training + 2h rest
+    TRAIT_GAIN_COOLDOWN_MS: 30 * 60 * 1000,      // 30m get a trait,      // 30m get a trait
+    TRAIT_TRAIN_COOLDOWN_MS: 14 * 60 * 60 * 1000,      // 12h training + 2h rest,     // 30m train a trait
     CULT_UP_COOLDOWN_MS: 24 * 60 * 60 * 1000,    // 24h cult rank up
 
     // Training
@@ -47,6 +47,12 @@
     { key: "wil", name: "Воля" },
   ];
 
+  // ===== Trait stat modifiers (separate from training/base stats) =====
+  // Good traits: +2% per level, Bad traits: -4% per level
+  // Level is 1..5 (rank 0..4)
+  const TRAIT_PCT_GOOD_PER_LVL = 2;
+  const TRAIT_PCT_BAD_PER_LVL  = -4;
+
   // Training complexes: 60/30/10
   const COMPLEXES = [
     { id: "power",      name: "Силовий комплекс",        weights: [["str", 0.6], ["sta", 0.3], ["wil", 0.1]] },
@@ -72,8 +78,32 @@
   // Branch level: 1..5, upgrade once per 12h
   const BRANCH = {
     MAX_LEVEL: 5,
+    // TEST PATCH: прокачка спеціалізації / рангу за 1 секунду
     UPGRADE_COOLDOWN_MS: 12 * 60 * 60 * 1000,
   };
+
+  function specRankName(specId, branchId, lvl){
+    const n = Math.max(1, Math.min(BRANCH.MAX_LEVEL, Number(lvl)||1));
+    if (specId === "elemental" && branchId === "earth"){
+      return [
+        "Учень Землі",
+        "Адепт Землі",
+        "Маг Землі",
+        "Архімаг Землі",
+        "Грандмаг Землі",
+      ][n-1];
+    }
+    if (specId === "elemental" && branchId === "fire"){
+      return [
+        "Учень Вогню",
+        "Адепт Вогню",
+        "Маг Вогню",
+        "Архімаг Вогню",
+        "Грандмаг Вогню",
+      ][n-1];
+    }
+    return `Ранг ${n}`;
+  }
 
   // Which specs are "magical" (spend mana)
   // Final build: only Mag is mana-based
@@ -86,6 +116,46 @@
     const lv = Math.max(1, Math.min(BRANCH.MAX_LEVEL, Number(branchLevel)||1));
     return 1 - 0.10 * (lv - 1);
   }
+
+  // Mana cost helper
+  // baseMana: "rank base" (20/45/80/140/200)
+  // applies tier multiplier and INT discount (1 INT = -1%)
+  function manaCostsForHunter(h, baseMana, opts){
+    opts = opts || {};
+    const doRound = (opts.round !== false);
+    const decimals = (typeof opts.decimals === "number") ? opts.decimals : 2;
+
+    const base = Math.max(0, Number(baseMana)||0);
+    const mult = tierSkillMult(h && h.tier); // -5% per better tier step
+    const intVal = Math.max(0, Number((((h||{}).stats||{}).int)||0));
+    const intDisc = Math.min(95, intVal); // safety cap
+
+    const afterTierRaw = Math.max(0, base * mult);
+    const finalRaw = Math.max(0, afterTierRaw * (1 - intDisc/100));
+
+    const baseOut = doRound ? Math.round(base) : base;
+    const afterTierOut = doRound ? Math.round(afterTierRaw) : afterTierRaw;
+    const finalOut = doRound ? Math.round(finalRaw) : Number(finalRaw.toFixed(decimals));
+
+    return {
+      base: baseOut,
+      afterTier: afterTierOut,
+      final: finalOut,
+      finalRaw,
+      intDisc,
+      tierMult: mult,
+    };
+  }
+
+  function fmtNum(n){
+    const v = Number(n);
+    if (!isFinite(v)) return "0";
+    if (Math.abs(v - Math.round(v)) < 1e-9) return String(Math.round(v));
+    let s = v.toFixed(2);
+    s = s.replace(/\.00$/,"").replace(/(\.[0-9])0$/,"$1");
+    return s;
+  }
+
 
   // Skills database is loaded from skills.js as window.SKILLS_DB (final).
 
@@ -113,11 +183,8 @@
       {id:"breach", name:"Пробиття"},
     ],
     elemental: [
-      {id:"fire", name:"Вогонь"},
-      {id:"ice", name:"Лід"},
-      {id:"storm", name:"Блискавка"},
+      // Патч: поки тестуємо 1 школу
       {id:"earth", name:"Земля"},
-      {id:"air", name:"Повітря"},
     ],
     necromancer: [
       {id:"raise", name:"Підняття"},
@@ -191,6 +258,12 @@
     ];
   }
 
+  function getBranchDisplayName(specId, branchId){
+    const branches = getBranchesForSpec(specId);
+    const b = (branches||[]).find(x=>x.id===branchId);
+    return b ? b.name : branchId;
+  }
+
   function buildBranchSkills(specId, branchId){
     const db = (typeof window !== "undefined") ? window.SKILLS_DB : null;
     const isMagic = isMagicSpec(specId);
@@ -262,6 +335,7 @@
     const manaLine = isMagicSpec(h.specId)
       ? `<div class="branchPills">
           <span class="pill pill--good">Мана: <b>${Math.round(h.manaCur||0)}</b>/<b>${Math.round(h.mana||0)}</b></span>
+          <span class="pill">Інтелект: <b>${Math.round((((h||{}).stats||{}).int)||0)}</b> • -<b>${Math.min(95, Math.max(0, Math.round((((h||{}).stats||{}).int)||0)))}%</b> мани</span>
           ${h.souls ? `<span class="pill">Душі: <b>${h.souls}</b></span>` : `<span class="pill">Душі: <b>${h.souls||0}</b></span>`}
         </div>`
       : "";
@@ -287,6 +361,7 @@
 
     const b = branches.find(x=>x.id===h.specBranchId) || {id:h.specBranchId, name:h.specBranchId};
     const lvl = Math.max(1, Math.min(BRANCH.MAX_LEVEL, Number(h.branchLevel||1)));
+    const rankName = specRankName(h.specId, h.specBranchId, lvl);
     const upLeft = branchUpgradeLeftMs(h);
     const canUp = upLeft<=0 && lvl < BRANCH.MAX_LEVEL;
 
@@ -300,17 +375,22 @@
       if (!group.length) continue;
       blocks.push(`
         <div class="note" style="margin-top:10px">
-          <div class="note__title">Рівень ${lv}</div>
+          <div class="note__title">${isMagic ? specRankName(h.specId, h.specBranchId, lv) : `Ранг ${lv}`}</div>
           <div class="skills">
             ${group.map(sk=>{
               const left = skillLeftMs(h, sk.id);
               const cdMult = cdMultiplier(lvl);
               const effCd = Math.max(1, Math.round(sk.cd * cdMult));
-              const readyTxt = left>0 ? `КД: ${hms(left)}` : `КД: ${formatSecCd(effCd)}`;
-              const costTxt = sk.type==="mana" ? `Мана: ${sk.mana}` : "Без мани";
+              const readyTxt = (Number(sk.cd)||0) <= 0 ? "Без КД" : (left>0 ? `КД: ${hms(left)}` : `КД: ${formatSecCd(effCd)}`);
+              const costTxt = (sk.type==="mana")
+                ? (()=>{
+                    const mc = manaCostsForHunter(h, sk.mana);
+                    return `Мана: ${mc.final} (з ${mc.base})`;
+                  })()
+                : "Без мани";
               // no "use" button in final UI; we only show costs and cooldown numbers.
               const extra = (h.specId==="elemental" && h.specBranchId==="necro" && sk.name==="Підняття")
-                ? ` • Міньйони масштабуються від рівня гілки.`
+                ? ` • Міньйони масштабуються від рангу спеціалізації.`
                 : "";
               return `
                 <div class="skill" data-skillwrap="${escapeHtml(sk.id)}">
@@ -337,7 +417,7 @@
       <div class="branchHead">
         <div>
           <div class="branchTitle">Гілка: ${escapeHtml(b.name)}</div>
-          <div class="branchMeta">${escapeHtml(spec?spec.name:h.specId)} • Рівень: <b>${lvl}</b> / ${BRANCH.MAX_LEVEL} • ${isMagic ? `Мана відновлення: <b>2%</b> / <b>5с</b>` : `КД навиків: <b>${Math.round(cdMultiplier(lvl)*100)}%</b>`}</div>
+          <div class="branchMeta">${escapeHtml(spec?spec.name:h.specId)} • Ранг: <b>${escapeHtml(rankName)}</b> (${lvl}/${BRANCH.MAX_LEVEL}) • ${isMagic ? `Мана відновлення: <b>2%</b> / <b>5с</b>` : `КД навиків: <b>${Math.round(cdMultiplier(lvl)*100)}%</b>`}</div>
         </div>
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end">
           <button class="btn btn--primary btn--mini" type="button" data-branchup="${escapeHtml(h.id)}" ${canUp ? "" : "disabled"}>
@@ -523,47 +603,78 @@ const TRAIT_STAT_MAP = {
   reckless: {main:"wil"},
 };
 
+function inferMainStatFromTraitMeta(meta){
+  if (!meta || !meta.name) return null;
+  const n = String(meta.name).toLowerCase();
+
+  // Perception (точність/спостереження/навігація)
+  if (/(стрілець|снайпер|скаут|слідопит|спостерігач|приціл|навігатор|слідчий|шпигун|диверсант|гострий|інтуїц)/.test(n)) return "per";
+
+  // Reaction (рефлекси/миттєвість)
+  if (/(рефлекс|реакц|баланс)/.test(n)) return "rea";
+
+  // Agility (рух/спритність/взлом/скритність)
+  if (/(ловк|акробат|паркур|тіньовик|відмичк|злодій|курʼєр|кур'єр|спринтер|швидкіст|альпініст|плавець|бігун|лучник|арбалет)/.test(n)) return "agi";
+
+  // Strength (силові/бій)
+  if (/(сила|боєць|боксер|борець|ніж|охоронец|охорона|пожежник|коваль|тесля|сталев)/.test(n)) return "str";
+
+  // Endurance (витривалість/виживання/робота тілом довго)
+  if (/(витрив|триваліст|атлет|виживальник|моряк|рятувальник)/.test(n)) return "sta";
+
+  // Will (воля/контроль/соціалка/спокій)
+  if (/(воля|дисциплін|лідер|спокійн|смілив|безстрашн|впертий|терпляч|монах|служитель|дипломат|перемовник|торгівець|шулер|актор|ілюзіоніст|фокус|допит)/.test(n)) return "wil";
+
+  // Intellect (інтелект/наука/ремесло/медицина/право)
+  if (/(інтелект|хакер|тактик|хімік|інженер|механік|водій|пілот|кухар|дослідник|стратег|пам|аналітик|плануван|вчений|писар|лінгвіст|юрист|суддя|вчитель|психолог|хірург|медсестра|фармацевт|зброяр|сапер|ботанік)/.test(n)) return "int";
+
+  return null;
+}
+
 function getTraitEffect(id){
-  // default: map by known ids, otherwise skill->per, vice->wil
+  // Determine which BASE stat the trait modifies (as %), applied separately at the end.
   const meta = getTraitMeta(id);
   const cfg = TRAIT_STAT_MAP[id] || null;
-  if (cfg) return cfg;
-  if (meta && meta.type === "vice") return {main:"wil"};
-  return {main:"per"};
+  if (cfg && cfg.main) return cfg;
+
+  const inferred = inferMainStatFromTraitMeta(meta);
+  if (inferred) return { main: inferred };
+
+  // Fallbacks: keep them balanced (NOT all into perception)
+  if (meta && meta.type === "vice") return { main: "wil" };
+  return { main: "int" };
 }
 
-function applyPctStat(h, key, pct){
-  const cur = Number(h.stats[key]) || 0;
-  h.stats[key] = cur + (cur * pct);
-}
-
-function applyTraitStep(h, tr){
-  // One step = 2% effect (good -> +, vice -> - on main stat)
-  const meta = getTraitMeta(tr.id);
-  const eff = getTraitEffect(tr.id);
-  const pct = 0.02;
-  if (meta && meta.type === "vice"){
-    // vices: small downside to one stat, mind bonus handled in recomputeHunter
-    applyPctStat(h, eff.main, -pct);
-  } else {
-    applyPctStat(h, eff.main, +pct);
-    if (eff.sub) applyPctStat(h, eff.sub, +pct*0.5); // +1% on sub
-  }
-}
-
-function ensureTraitEffectsApplied(h){
-  if (!Array.isArray(h.traits)) return;
+function normalizeTraits(h){
+  if (!Array.isArray(h.traits)) h.traits = [];
   h.traits.forEach(tr=>{
-    if (typeof tr.appliedRank !== "number") tr.appliedRank = -1; // nothing applied yet
-    // Apply missing steps up to current rank
-    const target = Math.max(0, Math.min(4, Number(tr.rank)||0));
-    while (tr.appliedRank < target){
-      tr.appliedRank += 1;
-      applyTraitStep(h, tr);
-    }
-    tr.rankName = traitRankName(getTraitMeta(tr.id)?.type || tr.type, target);
-    tr.type = getTraitMeta(tr.id)?.type || tr.type || "skill";
+    if (!tr) return;
+    const meta = getTraitMeta(tr.id);
+    tr.type = (meta && meta.type) ? meta.type : (tr.type || "skill");
+    tr.rank = Math.max(0, Math.min(4, Number(tr.rank)||0));
+    tr.rankName = traitRankName(tr.type, tr.rank);
   });
+}
+
+// Returns percent modifiers per stat from traits. Example: {str: +6, sta: -8, ...}
+function traitPctByStat(h){
+  const out = {};
+  STATS.forEach(s=>out[s.key]=0);
+  if (!Array.isArray(h.traits) || !h.traits.length) return out;
+
+  h.traits.forEach(tr=>{
+    if (!tr) return;
+    const meta = getTraitMeta(tr.id);
+    const type = (meta && meta.type) ? meta.type : (tr.type || "skill");
+    const lvl = Math.max(1, Math.min(5, (Number(tr.rank)||0) + 1));
+    const eff = getTraitEffect(tr.id);
+    const k = eff?.main;
+    if (!k || !(k in out)) return;
+    const perLvl = (type === "vice") ? TRAIT_PCT_BAD_PER_LVL : TRAIT_PCT_GOOD_PER_LVL;
+    out[k] += perLvl * lvl;
+  });
+
+  return out;
 }
 
 // Tier affects skill cooldown and mana cost: -5% per better tier step (7->0)
@@ -593,6 +704,14 @@ function tierSkillMult(tier){
         if (rank >= 5) lines.push("Крила (візуал)");
         return lines;
       }
+          ,onJoin(h){
+        if (!h.baseStats) h.baseStats = {};
+        h.baseStats.int = (Number(h.baseStats.int)||0) + 3;
+        h.baseStats.wil = (Number(h.baseStats.wil)||0) + 3;
+        h.baseStats.per = (Number(h.baseStats.per)||0) + 3;
+        return { msg: "Вступ успішний: +3 Інтелект, +3 Воля, +3 Сприйняття" };
+      }
+          
     },
     {
       id: "baal",
@@ -613,16 +732,31 @@ function tierSkillMult(tier){
         if (rank >= 2) lines.push("На 3 ранзі: 5 душ → воскресіння");
         return lines;
       },
-      onJoin(h){
-        // Баал: 50% смерть / 50% вступ +10 до всіх статів (поза перевірками)
-        // Повертаємо об'єкт, щоб joinCult/інтерфейс міг обробити смерть.
+      onJoin(h, choice){
+        // Баал: 50% смерть / 50% вступ. Далі гравець обирає шлях: Сила або Розум.
         if (Math.random() < 0.50){
           return { dead: true, msg: "Баал відкинув. Хант помер." };
         }
-        STATS.forEach(s=>{ h.stats[s.key] = (Number(h.stats[s.key])||0) + 10; });
-        if (!Array.isArray(h.cultMarks)) h.cultMarks = [];
-        if (!h.cultMarks.includes("Бездушний")) h.cultMarks.push("Бездушний");
-        return { dead:false, msg:"Вступ успішний: +10 до всіх статів" };
+        if (!h.baseStats) h.baseStats = {};
+        const ch = (choice === "mind" || choice === "rozum") ? "mind" : "power";
+        if (ch === "power"){
+          // Сила: +10 до Сили, Ловкості, Витривалості, Реакції; Воля -5
+          ["str","agi","sta","rea"].forEach(k=>{
+            h.baseStats[k] = (Number(h.baseStats[k])||0) + 10;
+          });
+          h.baseStats.wil = (Number(h.baseStats.wil)||0) - 5;
+          if (!Array.isArray(h.cultMarks)) h.cultMarks = [];
+          if (!h.cultMarks.includes("Бездушний")) h.cultMarks.push("Бездушний");
+          return { dead:false, msg:"Вступ успішний (Сила): +10 Сила/Ловкість/Витривалість/Реакція, Воля -5" };
+        } else {
+          // Розум: +20 до Інтелекту, +10 до Сприйняття; Воля -5
+          h.baseStats.int = (Number(h.baseStats.int)||0) + 20;
+          h.baseStats.per = (Number(h.baseStats.per)||0) + 10;
+          h.baseStats.wil = (Number(h.baseStats.wil)||0) - 5;
+          if (!Array.isArray(h.cultMarks)) h.cultMarks = [];
+          if (!h.cultMarks.includes("Бездушний")) h.cultMarks.push("Бездушний");
+          return { dead:false, msg:"Вступ успішний (Розум): +20 Інтелект, +10 Сприйняття, Воля -5" };
+        }
       }
     },
     {
@@ -638,6 +772,13 @@ function tierSkillMult(tier){
           `Ліміт накопичення: +${cap}%`,
           `Тривалість бафу: ${dur} хв`,
         ];
+      }
+          ,onJoin(h){
+        if (!h.baseStats) h.baseStats = {};
+        h.baseStats.str = (Number(h.baseStats.str)||0) + 3;
+        h.baseStats.sta = (Number(h.baseStats.sta)||0) + 3;
+        h.baseStats.agi = (Number(h.baseStats.agi)||0) + 2;
+        return { msg: "Вступ успішний: +3 Сила, +3 Витривалість, +2 Ловкість" };
       }
     },
     {
@@ -658,6 +799,13 @@ function tierSkillMult(tier){
         ];
         if (rank >= 3) lines.push("Атака з тіні: бонус");
         return lines;
+      },
+      onJoin(h){
+        if (!h.baseStats) h.baseStats = {};
+        h.baseStats.agi = (Number(h.baseStats.agi)||0) + 3;
+        h.baseStats.per = (Number(h.baseStats.per)||0) + 3;
+        h.baseStats.rea = (Number(h.baseStats.rea)||0) + 3;
+        return { msg: "Вступ успішний: +3 Ловкість, +3 Сприйняття, +3 Реакція" };
       }
     },
   ];
@@ -726,27 +874,55 @@ function getUnlockedSkills(h){
   const all = buildBranchSkills(h.specId, h.specBranchId);
   const unlocked = (all||[]).filter(sk => (Number(sk.levelReq)||1) <= lvl);
 
-  const mult = tierSkillMult(h.tier); // -5% per better tier step
   return unlocked.map(sk=>{
     const out = Object.assign({}, sk);
     if (out.type === "cd" && typeof out.cd === "number"){
+      const mult = tierSkillMult(h.tier);
       out.cd = Math.max(1, Math.round(out.cd * mult));
     }
     if (out.type === "mana" && typeof out.mana === "number"){
-      out.mana = Math.max(0, Math.round(out.mana * mult));
+      const mc = manaCostsForHunter(h, out.mana);
+      // Keep both base and final; for compatibility, `mana` equals final.
+      out.manaBase = mc.base;
+      out.manaAfterTier = mc.afterTier;
+      out.manaFinal = mc.final;
+      out.mana = mc.final;
+      out._intDisc = mc.intDisc;
+      out._tierMult = mc.tierMult;
     }
-    out._tierMult = mult;
     return out;
   });
 }
-);
-lines.push("");
+
+  function hunterToTxt(h){
+    const lines = [];
+
+    const name = h.name ? h.name : 'Без імені';
+    lines.push('== Хант ==');
+    lines.push(`Ім'я: ${name}`);
+    lines.push(`ID: ${h.id}`);
+    lines.push(`Ступінь: ${h.tier}`);
+    lines.push(`Середній стат: ${h.avg}`);
+    lines.push('');
+
+    lines.push('== Стати (з розшифровкою) ==');
+    const pct = traitPctByStat(h);
+    STATS.forEach(s=>{
+      const vFinal = Number((h.stats||{})[s.key]) || 0;
+      const vBase  = Number((h.baseStats||{})[s.key]) || 0;
+      const p = Number(pct[s.key]) || 0;
+      const pTxt = (p === 0) ? "" : ` (особливості ${p>0?"+":""}${p.toFixed(1)}%)`;
+      lines.push(`${s.name}: ${vFinal.toFixed(2)}${pTxt} | ${statMeaning(s.key, vFinal)}`);
+      lines.push(`  база: ${vBase.toFixed(2)}`);
+    });
+
+    lines.push('');
 lines.push("== Очки розуму ==");
-lines.push(`Очки розуму: ${Math.round(Number(h.mind)||0)}`);
+lines.push(`Очки розуму: ${Number(h.mind||0).toFixed(2)}`);
 lines.push("");
 
     lines.push("== Мана ==");
-    lines.push(`Максимум: ${Math.round(h.mana)} | Поточна: ${Math.round(Number(h.manaCur)||0)}`);
+    lines.push(`Максимум: ${Number(h.mana||0).toFixed(2)} | Поточна: ${Number(h.manaCur||0).toFixed(2)}`);
     lines.push("Відновлення: +2% від максимуму кожні 5 секунд");
     lines.push("");
 
@@ -756,7 +932,7 @@ lines.push("");
       lines.push(`Спец: ${sp ? sp.name : h.specId}`);
       if (h.specBranchId){
         lines.push(`Гілка: ${getBranchDisplayName(h.specId, h.specBranchId)}`);
-        lines.push(`Рівень гілки: ${Number(h.branchLevel)||0}`);
+        lines.push(`Ранг спеціалізації: ${specRankName(h.specId, h.specBranchId, Number(h.branchLevel)||0)}`);
       } else {
         lines.push("Гілка: —");
       }
@@ -776,7 +952,11 @@ lines.push("");
       skills.forEach(sk=>{
         lines.push(`• ${sk.name}`);
         if (sk.desc) lines.push(`  ${sk.desc}`);
-        if (sk.type === "mana") lines.push(`  Мана: ${Math.round(Number(sk.mana)||0)}`);
+        if (sk.type === "mana"){
+          const fin = (typeof sk.manaFinal === "number") ? sk.manaFinal : Math.round(Number(sk.mana)||0);
+          const base = (typeof sk.manaBase === "number") ? sk.manaBase : null;
+          lines.push(`  Мана: ${fin}${base!==null ? ` (з ${base})` : ""}`);
+        }
         if (sk.type === "cd") lines.push(`  КД: ${Math.round(Number(sk.cd)||0)} с`);
       });
     }
@@ -792,11 +972,12 @@ if (Array.isArray(h.traits) && h.traits.length){
     const rn = traitRankName(type, tr.rank);
     const mainName = (STATS.find(s=>s.key===eff.main)?.name) || eff.main;
     const subName = eff.sub ? ((STATS.find(s=>s.key===eff.sub)?.name) || eff.sub) : "";
-    lines.push(`• ${tr.name} (${rn})`);
+    lines.push(`• ${tr.name || (meta?meta.name:tr.id)} (${rn})`);
+    const lvl = (Number(tr.rank)||0) + 1;
     if (type==="vice"){
-      lines.push(`  Ефект: -2%/рівень до ${mainName} • +очки розуму (пасивно)`);
+      lines.push(`  Ефект: -4% ×${lvl} до ${mainName} (сумується; застосовується окремо від тренування)`);
     } else {
-      lines.push(`  Ефект: +2%/рівень до ${mainName}${subName ? ` • +1%/рівень до ${subName}` : ""}`);
+      lines.push(`  Ефект: +2% ×${lvl} до ${mainName} (сумується; застосовується окремо від тренування)`);
     }
   });
 } else lines.push("—");
@@ -824,6 +1005,14 @@ lines.push("");
 
 lines.push("== Лор ==");
 lines.push(h.lore ? h.lore : "—");
+lines.push("");
+
+lines.push("== Зовнішність (текст) ==");
+lines.push(h.appearanceText ? h.appearanceText : "—");
+lines.push("");
+
+lines.push("== Важливо ==");
+lines.push(h.importantText ? h.importantText : "—");
 
     return lines.join("\n");
   }
@@ -875,11 +1064,20 @@ lines.push(h.lore ? h.lore : "—");
   function normalizeHunter(h){
     if (!h || typeof h !== "object") return;
 
-    // stats object
-    if (!h.stats || typeof h.stats !== "object") h.stats = {};
+    // Base stats migration:
+    // - New format: h.baseStats = base (training changes this), h.stats = final (computed)
+    // - Old format: only h.stats existed => treat it as base
+    if (!h.baseStats || typeof h.baseStats !== "object"){
+      const old = (h.stats && typeof h.stats === "object") ? h.stats : {};
+      h.baseStats = {};
+      STATS.forEach(s=>{ h.baseStats[s.key] = Number(old[s.key]) || 0; });
+    }
+    // Ensure baseStats has keys
     STATS.forEach(s => {
-      if (typeof h.stats[s.key] !== "number") h.stats[s.key] = Number(h.stats[s.key]) || 0;
+      if (typeof h.baseStats[s.key] !== "number") h.baseStats[s.key] = Number(h.baseStats[s.key]) || 0;
     });
+    // Ensure stats object exists (will be overwritten by recomputeHunter)
+    if (!h.stats || typeof h.stats !== "object") h.stats = {};
 
     // traits migration: old single traitId/traitRank -> traits[]
     if (!Array.isArray(h.traits)) h.traits = [];
@@ -895,13 +1093,7 @@ lines.push(h.lore ? h.lore : "—");
     if (typeof h.traitLastGainAt !== "number") h.traitLastGainAt = Number(h.traitLastPickAt)||0;
     if (typeof h.traitLastTrainAt !== "number") h.traitLastTrainAt = Number(h.traitLastTrainAt)||0;
 
-    // ensure each trait has type
-    h.traits.forEach(t=>{
-      if (!t) return;
-      const meta = getTraitMeta(t.id);
-      if (!t.type) t.type = meta ? meta.type : "skill";
-      t.rank = Math.max(0, Math.min(4, Number(t.rank)||0));
-    });
+    normalizeTraits(h);
 
     // cult fields
     if (typeof h.cultId !== "string") h.cultId = h.cultId ? String(h.cultId) : "";
@@ -914,6 +1106,9 @@ lines.push(h.lore ? h.lore : "—");
     if (typeof h.specId !== "string") h.specId = h.specId ? String(h.specId) : "";
     if (typeof h.lore !== "string") h.lore = h.lore ? String(h.lore) : "";
     if (typeof h.loreSetAt !== "number") h.loreSetAt = Number(h.loreSetAt)||0;
+
+    if (typeof h.appearanceText !== "string") h.appearanceText = h.appearanceText ? String(h.appearanceText) : "";
+    if (typeof h.importantText !== "string") h.importantText = h.importantText ? String(h.importantText) : "";
 
     
 // appearance (free editable)
@@ -942,16 +1137,23 @@ ensureRiskState(h);
   function applyPermanentDebuffAll(h){
     ensureRiskState(h);
     if (h.permaDebuff >= 0.30) return;
-    STATS.forEach(s => { h.stats[s.key] = (Number(h.stats[s.key])||0) * 0.70; });
+    if (!h.baseStats) h.baseStats = {};
+    STATS.forEach(s => { h.baseStats[s.key] = (Number(h.baseStats[s.key])||0) * 0.70; });
     h.permaDebuff = 0.30;
   }
 
-  function clampUnpassedTo45(h){
+  function clampUnpassedTo45(h, beforeStats){
+    // Prevent unintended "reset" of stats already above the threshold.
+    // If beforeStats is provided, we only clamp stats that *crossed* the threshold in this action
+    // and do not have riskPassed.
     ensureRiskState(h);
     STATS.forEach(s=>{
-      const v = Number(h.stats[s.key])||0;
-      if (!h.riskPassed[s.key] && v > CFG.RISK_THRESHOLD){
-        h.stats[s.key] = CFG.RISK_THRESHOLD;
+      const k = s.key;
+      const v = Number((h.baseStats||{})[k])||0;
+      const before = beforeStats ? (Number(beforeStats[k])||0) : null;
+      const shouldCheck = (beforeStats ? (before < CFG.RISK_THRESHOLD) : true);
+      if (shouldCheck && !h.riskPassed[k] && v > CFG.RISK_THRESHOLD){
+        h.baseStats[k] = CFG.RISK_THRESHOLD;
       }
     });
   }
@@ -972,10 +1174,27 @@ ensureRiskState(h);
 
   // ===== Core recompute =====
   function recomputeHunter(h){
+    normalizeTraits(h);
+    if (!h.baseStats || typeof h.baseStats !== "object"){
+      // fallback (old saves)
+      h.baseStats = {};
+      STATS.forEach(s=>{ h.baseStats[s.key] = Number((h.stats||{})[s.key]) || 0; });
+    }
+
+    // 1) Base stats are what training & permanent systems modify.
+    // 2) Final stats are base stats after trait percent modifiers (applied last).
+    const pct = traitPctByStat(h);
+    STATS.forEach(s=>{
+      const base = Number(h.baseStats[s.key]) || 0;
+      const p = Number(pct[s.key]) || 0;
+      // keep decimals; allow decrease; no rounding
+      h.stats[s.key] = base * (1 + (p / 100));
+    });
+
     const sum = STATS.reduce((a,s)=>a + (Number(h.stats[s.key])||0), 0);
     h.avg = +(sum / STATS.length).toFixed(2);
     h.tier = calcTier(h.avg);
-    h.mana = Math.round((Number(h.stats.int)||0) * 5);
+    h.mana = (Number(h.stats.int)||0) * 5;
     // mana current + regen (only for magic specs, but we keep pool for all)
     if (typeof h.manaCur !== "number") h.manaCur = h.mana;
     if (!h.manaLastTickAt) h.manaLastTickAt = Date.now();
@@ -992,18 +1211,15 @@ ensureRiskState(h);
     // clamp
     h.manaCur = Math.max(0, Math.min(h.mana, h.manaCur));
 
-// Apply trait effects to stats (one-time incremental), then compute Mind points
-ensureTraitEffectsApplied(h);
-
-// Mind points (Очки розуму): based on WIL + INT, plus bonuses from vices
-const wil = Number(h.stats.wil)||0;
-const intel = Number(h.stats.int)||0;
-const mindBase = (wil + intel) * 5; // stable scale
-const vices = Array.isArray(h.traits) ? h.traits.filter(t => (getTraitMeta(t.id)?.type||t.type)==="vice") : [];
-const viceRanks = vices.reduce((a,t)=>a + (Number(t.rank)||0) + 1, 0); // each vice counts from 1..5
-const viceMult = 1 + Math.min(0.50, vices.length * 0.05); // up to +50%
-const viceFlat = viceRanks * 10; // flat bonus per vice level
-h.mind = Math.round(mindBase * viceMult + viceFlat);
+    // Mind points (Очки розуму): based on FINAL WIL + INT, plus bonuses from vices
+    const wil = Number(h.stats.wil)||0;
+    const intel = Number(h.stats.int)||0;
+    const mindBase = (wil + intel) * 5; // stable scale
+    const vices = Array.isArray(h.traits) ? h.traits.filter(t => (getTraitMeta(t.id)?.type||t.type)==="vice") : [];
+    const viceRanks = vices.reduce((a,t)=>a + (Number(t.rank)||0) + 1, 0); // each vice counts from 1..5
+    const viceMult = 1 + Math.min(0.50, vices.length * 0.05); // up to +50%
+    const viceFlat = viceRanks * 10; // flat bonus per vice level
+    h.mind = mindBase * viceMult + viceFlat;
 
 
     if (h.specId){
@@ -1037,12 +1253,13 @@ h.mind = Math.round(mindBase * viceMult + viceFlat);
   }
 
   function createHunterRaw(){
-    const stats = {};
-    STATS.forEach(s => stats[s.key] = randInt(5,31));
+    const baseStats = {};
+    STATS.forEach(s => baseStats[s.key] = randInt(5,20));
     const h = {
       id: "h_" + Math.random().toString(16).slice(2) + "_" + Date.now(),
       name: null,
-      stats,
+      baseStats,
+      stats: {},
 
       lastTrainAt: 0,
 
@@ -1074,6 +1291,10 @@ h.mind = Math.round(mindBase * viceMult + viceFlat);
       // lore
       lore: "",
       loreSetAt: 0,
+
+      // extra notes
+      appearanceText: "",
+      importantText: "",
 
       status: "",
       createdAt: Date.now(),
@@ -1243,7 +1464,7 @@ h.mind = Math.round(mindBase * viceMult + viceFlat);
     return Math.max(0, left);
   }
 
-  function joinCult(h, cultId){
+  function joinCult(h, cultId, choice){
     if (h.cultId) return {ok:false, msg:"Вступ незворотній: культ вже є"};
     const cult = getCult(cultId);
     if (!cult) return {ok:false, msg:"Невідомий культ"};
@@ -1252,7 +1473,7 @@ h.mind = Math.round(mindBase * viceMult + viceFlat);
     h.cultLastUpgradeAt = Date.now(); // lock for 24h from join
     let joinMsg = `Вступив: ${cult.name}`;
     if (cult.onJoin){
-      const out = cult.onJoin(h);
+      const out = cult.onJoin(h, choice);
       if (out && out.dead){
         // mark for caller to delete hunter
         return {ok:false, dead:true, msg: out.msg || "Хант помер"};
@@ -1483,6 +1704,18 @@ h.mind = Math.round(mindBase * viceMult + viceFlat);
   </div>
 </div>
 
+<div class="note" style="margin-top:10px">
+  <div class="note__title">Зовнішність (текст)</div>
+  <div class="note__text" style="color:var(--muted)">Вільний опис. Впливає тільки на запис/експорт.</div>
+  <textarea class="input" style="min-height:90px; padding:10px 12px; width:100%; resize:vertical" data-extra="appearanceText" data-hid="${escapeHtml(h.id)}" placeholder="Опиши зовнішність...">${escapeHtml(h.appearanceText||"")}</textarea>
+</div>
+
+<div class="note" style="margin-top:10px">
+  <div class="note__title">Важливо</div>
+  <div class="note__text" style="color:var(--muted)">Будь-які нотатки (тригери, слабкості, правила, тощо).</div>
+  <textarea class="input" style="min-height:90px; padding:10px 12px; width:100%; resize:vertical" data-extra="importantText" data-hid="${escapeHtml(h.id)}" placeholder="Що важливо пам’ятати...">${escapeHtml(h.importantText||"")}</textarea>
+</div>
+
             <div class="statsGrid">
               ${STATS.map(s => {
                 const val = Number(h.stats[s.key]) || 0;
@@ -1592,7 +1825,7 @@ h.mind = Math.round(mindBase * viceMult + viceFlat);
         if (!branchId){ toast("Нема гілки"); return; }
         h.specBranchId = branchId;
         h.branchLevel = 1;
-        h.branchLastUpgradeAt = Date.now(); // next upgrade in 12h
+        h.branchLastUpgradeAt = Date.now(); // TEST: next upgrade in 1s
         if (!h.skillCooldowns) h.skillCooldowns = {};
         recomputeHunter(h);
         saveHunters(hs);
@@ -1615,7 +1848,7 @@ h.mind = Math.round(mindBase * viceMult + viceFlat);
         h.branchLastUpgradeAt = Date.now();
         recomputeHunter(h);
         saveHunters(hs);
-        toast(`Рівень гілки: ${h.branchLevel}`);
+        toast(`Ранг спеціалізації: ${specRankName(h.specId, h.specBranchId, h.branchLevel)}`);
         render();
         return;
       }
@@ -1634,9 +1867,24 @@ h.mind = Math.round(mindBase * viceMult + viceFlat);
 list.addEventListener("input", (e)=>{
   const t = e.target;
   if (!t || !t.getAttribute) return;
-  const field = t.getAttribute("data-app");
+
   const hid = t.getAttribute("data-hid");
-  if (!field || !hid) return;
+  if (!hid) return;
+
+  const extra = t.getAttribute("data-extra");
+  if (extra){
+    const hs = loadHunters();
+    const h = hs.find(x=>x.id===hid);
+    if (!h) return;
+    if (extra === "appearanceText") h.appearanceText = String(t.value || "");
+    if (extra === "importantText") h.importantText = String(t.value || "");
+    saveHunters(hs);
+    return;
+  }
+
+  const field = t.getAttribute("data-app");
+  if (!field) return;
+
   const hs = loadHunters();
   const h = hs.find(x=>x.id===hid);
   if (!h) return;
@@ -1736,7 +1984,7 @@ list.addEventListener("input", (e)=>{
     }
 
     function simulateTrainingResult(h, complex, rolls){
-      const before={}; STATS.forEach(s=>before[s.key]=Number(h.stats[s.key])||0);
+      const before={}; STATS.forEach(s=>before[s.key]=Number((h.baseStats||{})[s.key])||0);
       const after={...before};
       for (let i=0;i<rolls.length;i++){
         const pts=rolls[i];
@@ -1750,13 +1998,14 @@ list.addEventListener("input", (e)=>{
     }
 
     function applyTrainingWithRolls(h, complex, rolls){
+      if (!h.baseStats) h.baseStats = {};
       for (let i=0;i<rolls.length;i++){
         const pts=rolls[i];
 
         complex.weights.forEach(([statKey,w])=>{
           const rawGain=pts*w;
-          const eff=efficiency(Number(h.stats[statKey])||0);
-          h.stats[statKey]=(Number(h.stats[statKey])||0)+rawGain*eff;
+          const eff=efficiency(Number(h.baseStats[statKey])||0);
+          h.baseStats[statKey]=(Number(h.baseStats[statKey])||0)+rawGain*eff;
         });
 
         if (h.specId){
@@ -1845,7 +2094,7 @@ list.addEventListener("input", (e)=>{
         applyTrainingWithRolls(h, complex, rolls);
 
         // IMPORTANT: only stats with riskPassed can go above 45 (training). Others clamped.
-        clampUnpassedTo45(h);
+        clampUnpassedTo45(h, sim.before);
 
         recomputeHunter(h);
         saveHunters(hunters);
@@ -2079,7 +2328,10 @@ list.addEventListener("input", (e)=>{
               <div class="note__text">${escapeHtml(c.describe(0).join(" • "))}</div>
             </div>
             <div class="actions" style="justify-content:flex-start; margin-top:10px">
-              <button class="btn btn--primary" type="button" data-join="${escapeHtml(c.id)}" ${h.cultId ? "disabled" : ""}>Вступити (незворотно)</button>
+              ${c.id==="baal"
+                ? `<button class="btn btn--primary" type="button" data-join="baal" data-choice="power" ${h.cultId ? "disabled" : ""}>Сила</button>
+                   <button class="btn btn--primary" type="button" data-join="baal" data-choice="mind" ${h.cultId ? "disabled" : ""}>Розум</button>`
+                : `<button class="btn btn--primary" type="button" data-join="${escapeHtml(c.id)}" ${h.cultId ? "disabled" : ""}>Вступити (незворотно)</button>`}
             </div>
           </div>
         `;
@@ -2096,33 +2348,34 @@ list.addEventListener("input", (e)=>{
           btn && btn.setAttribute("aria-expanded", String(!isOpen));
         });
 
-        card.querySelector("[data-join]")?.addEventListener("click", ()=>{
-          const hs = loadHunters();
-          const hh = hs.find(x=>x.id===h.id);
-          if (!hh) return;
-          if (hh.cultId){ toast("Культ вже є. Вступ незворотній."); return; }
-          // Extra warning for Baal: 50/50 death on join
-          const warn = (c.id === "baal")
-            ? `Вступити в культ "${c.name}"? Це НЕЗВОРОТНО.\n\nУВАГА: при вступі 50% шанс СМЕРТІ ханта.`
-            : `Вступити в культ "${c.name}"? Це незворотно.`;
-          if (!confirm(warn)) return;
-          const res = joinCult(hh, c.id);
-          if (res && res.dead){
-            const idx = hs.findIndex(x=>x.id===hh.id);
-            if (idx>=0) hs.splice(idx,1);
-            // If the removed hunter was selected, clear/retarget selection
-            const sel = getSelectedHunterId();
-            if (sel === hh.id){
-              setSelectedHunterId(hs[0]?.id || "");
+        card.querySelectorAll("[data-join]").forEach(btn=>{
+          btn.addEventListener("click", ()=>{
+            const choice = btn.getAttribute("data-choice") || null;
+            const hs = loadHunters();
+            const hh = hs.find(x=>x.id===h.id);
+            if (!hh) return;
+            if (hh.cultId){ toast("Культ вже є. Вступ незворотній."); return; }
+            // Extra warning for Baal: 50/50 death on join
+            const warn = (c.id === "baal")
+              ? `Вступити в культ "${c.name}"? Це НЕЗВОРОТНО.\n\nУВАГА: при вступі 50% шанс СМЕРТІ ханта.`
+              : `Вступити в культ "${c.name}"? Це незворотно.`;
+            if (!confirm(warn)) return;
+            const res = joinCult(hh, c.id, choice);
+            if (res && res.dead){
+              const idx = hs.findIndex(x=>x.id===hh.id);
+              if (idx>=0) hs.splice(idx,1);
+              // If the removed hunter was selected, clear/retarget selection
+              const removedId = hh.id;
+              const next = hs[0]?.id || "";
+              if (hunterSelect.value === removedId){
+                hunterSelect.value = next;
+                setSelectedHunterId(next);
+              }
             }
             saveHunters(hs);
-            toast(res.msg || "Хант помер");
-            fillHunters();
-            return;
-          }
-          saveHunters(hs);
-          toast(res.msg);
-          render();
+            toast(res.msg);
+            render();
+          });
         });
 
         list.appendChild(card);

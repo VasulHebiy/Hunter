@@ -66,10 +66,11 @@
 
   // Specializations
   const SPECS = [
-    { id:"fighter",   name:"Фізовик",  param:"Ярість",       keys:[["str",0.6],["sta",0.3],["wil",0.1]] },
+    { id:"fighter",   name:"Воїн",  param:"Бойовий дух",       keys:[["str",0.6],["sta",0.3],["wil",0.1]] },
     { id:"shooter",   name:"Стрілець", param:"Точність",     keys:[["per",0.6],["rea",0.3],["agi",0.1]] },
     { id:"assassin",  name:"Вбивця",   param:"Скритність",   keys:[["agi",0.6],["per",0.3],["rea",0.1]] },
-    { id:"elemental", name:"Маг",      param:"Магічна сила", keys:[["int",0.6],["per",0.3],["wil",0.1]] },
+    { id:"elemental", name:"Маг",        param:"Магічна сила", keys:[["int",0.6],["per",0.3],["wil",0.1]] },
+    { id:"necromancer", name:"Некромант", param:"Некромантія",  keys:[["int",0.6],["wil",0.3],["per",0.1]] },
   ];
 
 
@@ -78,12 +79,75 @@
   // Branch level: 1..5, upgrade once per 12h
   const BRANCH = {
     MAX_LEVEL: 5,
+    // TEST PATCH: прокачка спеціалізації / рангу за 1 секунду
     UPGRADE_COOLDOWN_MS: 12 * 60 * 60 * 1000,
   };
 
+  function specRankName(specId, branchId, lvl){
+    const n = Math.max(1, Math.min(BRANCH.MAX_LEVEL, Number(lvl)||1));
+    if (specId === "fighter"){
+      return [
+        "Боєць",
+        "Ветеран",
+        "Майстер війни",
+        "Чемпіон",
+        "Легендарний воїн",
+      ][n-1];
+    }
+    if (specId === "elemental" && branchId === "earth"){
+      return [
+        "Учень Землі",
+        "Адепт Землі",
+        "Маг Землі",
+        "Архімаг Землі",
+        "Грандмаг Землі",
+      ][n-1];
+    }
+    if (specId === "elemental" && branchId === "fire"){
+      return [
+        "Учень Вогню",
+        "Адепт Вогню",
+        "Маг Вогню",
+        "Архімаг Вогню",
+        "Грандмаг Вогню",
+      ][n-1];
+    }
+
+    if (specId === "elemental" && branchId === "vody"){
+      return [
+        "Учень Води",
+        "Адепт Води",
+        "Маг Води",
+        "Архімаг Води",
+        "Грандмаг Води",
+      ][n-1];
+    }
+
+    if (specId === "elemental" && branchId === "viter"){
+      return [
+        "Учень Вітру",
+        "Адепт Вітру",
+        "Маг Вітру",
+        "Архімаг Вітру",
+        "Грандмаг Вітру",
+      ][n-1];
+    }
+
+    if (specId === "necromancer"){
+      return [
+        "Некромант — Учень",
+        "Некромант — Адепт",
+        "Некромант — Маг",
+        "Некромант — Архімаг",
+        "Некромант — Грандмаг",
+      ][n-1];
+    }
+    return `Ранг ${n}`;
+  }
+
   // Which specs are "magical" (spend mana)
   // Final build: only Mag is mana-based
-  const MAGIC_SPECS = new Set(["elemental"]);
+  const MAGIC_SPECS = new Set(["elemental","necromancer"]);
 
   function isMagicSpec(specId){ return MAGIC_SPECS.has(specId); }
 
@@ -93,44 +157,120 @@
     return 1 - 0.10 * (lv - 1);
   }
 
+  // Mana cost helper
+  // baseMana: "rank base" (20/45/80/140/200)
+  // applies tier multiplier and INT discount (1 INT = -1%)
+  function manaCostsForHunter(h, baseMana, opts){
+    opts = opts || {};
+    const doRound = (opts.round !== false);
+    const decimals = (typeof opts.decimals === "number") ? opts.decimals : 2;
+
+    const base = Math.max(0, Number(baseMana)||0);
+    const mult = tierSkillMult(h && h.tier); // -5% per better tier step
+    const intVal = Math.max(0, Number((((h||{}).stats||{}).int)||0));
+    const intDisc = Math.min(95, intVal); // safety cap
+
+    const afterTierRaw = Math.max(0, base * mult);
+    const finalRaw = Math.max(0, afterTierRaw * (1 - intDisc/100));
+
+    const baseOut = doRound ? Math.round(base) : base;
+    const afterTierOut = doRound ? Math.round(afterTierRaw) : afterTierRaw;
+    const finalOut = doRound ? Math.round(finalRaw) : Number(finalRaw.toFixed(decimals));
+
+    return {
+      base: baseOut,
+      afterTier: afterTierOut,
+      final: finalOut,
+      finalRaw,
+      intDisc,
+      tierMult: mult,
+    };
+  }
+
+  function fmtNum(n){
+    const v = Number(n);
+    if (!isFinite(v)) return "0";
+    if (Math.abs(v - Math.round(v)) < 1e-9) return String(Math.round(v));
+    let s = v.toFixed(2);
+    s = s.replace(/\.00$/,"").replace(/(\.[0-9])0$/,"$1");
+    return s;
+  }
+
+  function getSpecPassives(specId){
+    const db = (typeof window !== "undefined") ? window.SKILLS_DB : null;
+    if (db && db[specId] && Array.isArray(db[specId].passives)) return db[specId].passives;
+    return [];
+  }
+
+  // Воїн: КД фінальний = База − (Сила + Витривалість)%
+  // Обмеження: КД не може бути менше 40% від бази
+  function warriorCdFinal(h, baseCd){
+    const base = Math.max(0, Number(baseCd)||0);
+    if (base <= 0) return 0;
+    const st = ((h||{}).stats||{});
+    const str = Math.max(0, Number(st.str)||0);
+    const sta = Math.max(0, Number(st.sta)||0);
+    const pct = Math.max(0, str + sta);
+    const raw = base * (1 - pct/100);
+    const min = base * 0.40;
+    const final = Math.max(min, raw);
+    return Math.max(1, Math.round(final));
+  }
+
+  // Стрілець: Фінальний КД = База − (Ловкість + Сприйняття)%
+  // Обмеження: КД не може бути менше 40% від бази
+  function shooterCdFinal(h, baseCd){
+    const base = Math.max(0, Number(baseCd)||0);
+    if (base <= 0) return 0;
+    const st = ((h||{}).stats||{});
+    const agi = Math.max(0, Number(st.agi)||0);
+    const per = Math.max(0, Number(st.per)||0);
+    const pct = Math.max(0, agi + per);
+    const raw = base * (1 - pct/100);
+    const min = base * 0.40;
+    const final = Math.max(min, raw);
+    return Math.max(1, Math.round(final));
+  }
+
+  // Асасін: Фінальний КД = База − (Ловкість + Реакція)%
+  // Обмеження: КД не може бути менше 40% від бази
+  function assassinCdFinal(h, baseCd){
+    const base = Math.max(0, Number(baseCd)||0);
+    if (base <= 0) return 0;
+    const st = ((h||{}).stats||{});
+    const agi = Math.max(0, Number(st.agi)||0);
+    const rea = Math.max(0, Number(st.rea)||0);
+    const pct = Math.max(0, agi + rea);
+    const raw = base * (1 - pct/100);
+    const min = base * 0.40;
+    const final = Math.max(min, raw);
+    return Math.max(1, Math.round(final));
+  }
+
+
+
   // Skills database is loaded from skills.js as window.SKILLS_DB (final).
 
   // Branches list (5 per specialization). Skills are reused packs but named with branch.
   const SPEC_BRANCHES = {
     fighter: [
-      {id:"unarmed", name:"Рукопаш"},
-      {id:"blade", name:"Холодна зброя"},
-      {id:"heavy", name:"Важка зброя"},
-      {id:"armor", name:"Броньований стиль"},
-      {id:"rage", name:"Ярість"},
+      {id:"warrior", name:"Воїн"},
     ],
     assassin: [
-      {id:"stealth", name:"Скритність"},
-      {id:"burst", name:"Швидке усунення"},
-      {id:"poison", name:"Отрути"},
-      {id:"shadow", name:"Тіньовий стиль"},
-      {id:"range", name:"Тихий дальній бій"},
+      {id:"assassin", name:"Асасін"},
     ],
     shooter: [
-      {id:"assault", name:"Штурмовик"},
-      {id:"sniper", name:"Снайпер"},
-      {id:"support", name:"Підтримка"},
-      {id:"marksman", name:"Маршал"},
-      {id:"breach", name:"Пробиття"},
+      {id:"shooter", name:"Стрілець"},
     ],
     elemental: [
-      {id:"fire", name:"Вогонь"},
-      {id:"ice", name:"Лід"},
-      {id:"storm", name:"Блискавка"},
       {id:"earth", name:"Земля"},
-      {id:"air", name:"Повітря"},
+      {id:"fire", name:"Вогню"},
+      {id:"vody", name:"Води"},
+      {id:"viter", name:"Вітру"},
     ],
+    // Некромант зараз має одну гілку — щоб не ламати вибір і дані.
     necromancer: [
-      {id:"raise", name:"Підняття"},
-      {id:"curse", name:"Прокляття"},
-      {id:"souls", name:"Душі"},
-      {id:"corpse", name:"Трупна магія"},
-      {id:"form", name:"Темна форма"},
+      {id:"vampiric_necro", name:"Некромант"},
     ],
     warlock: [
       {id:"sigils", name:"Печаті"},
@@ -216,6 +356,9 @@
         desc: sk.desc,
         cd: Number(sk.cd)||0,
         mana: Number(sk.mana)||0,
+        upkeep: (sk.upkeep!==undefined ? Number(sk.upkeep)||0 : 0),
+        upkeepInterval: (sk.upkeepInterval!==undefined ? Number(sk.upkeepInterval)||10 : 10),
+        upkeepPerUnit: !!sk.upkeepPerUnit,
         type: isMagic ? "mana" : "cd",
         levelReq: Number(sk.levelReq)||1,
       }));
@@ -274,6 +417,7 @@
     const manaLine = isMagicSpec(h.specId)
       ? `<div class="branchPills">
           <span class="pill pill--good">Мана: <b>${Math.round(h.manaCur||0)}</b>/<b>${Math.round(h.mana||0)}</b></span>
+          <span class="pill">Інтелект: <b>${Math.round((((h||{}).stats||{}).int)||0)}</b> • -<b>${Math.min(95, Math.max(0, Math.round((((h||{}).stats||{}).int)||0)))}%</b> мани</span>
           ${h.souls ? `<span class="pill">Душі: <b>${h.souls}</b></span>` : `<span class="pill">Душі: <b>${h.souls||0}</b></span>`}
         </div>`
       : "";
@@ -299,8 +443,11 @@
 
     const b = branches.find(x=>x.id===h.specBranchId) || {id:h.specBranchId, name:h.specBranchId};
     const lvl = Math.max(1, Math.min(BRANCH.MAX_LEVEL, Number(h.branchLevel||1)));
+    const rankName = specRankName(h.specId, h.specBranchId, lvl);
     const upLeft = branchUpgradeLeftMs(h);
     const canUp = upLeft<=0 && lvl < BRANCH.MAX_LEVEL;
+
+    const passives = getSpecPassives(h.specId);
 
     const skills = buildBranchSkills(h.specId, h.specBranchId);
     const unlocked = skills.filter(s=>s.levelReq<=lvl);
@@ -312,17 +459,35 @@
       if (!group.length) continue;
       blocks.push(`
         <div class="note" style="margin-top:10px">
-          <div class="note__title">Рівень ${lv}</div>
+          <div class="note__title">${isMagic ? specRankName(h.specId, h.specBranchId, lv) : `Ранг ${lv}`}</div>
           <div class="skills">
             ${group.map(sk=>{
               const left = skillLeftMs(h, sk.id);
-              const cdMult = cdMultiplier(lvl);
-              const effCd = Math.max(1, Math.round(sk.cd * cdMult));
-              const readyTxt = left>0 ? `КД: ${hms(left)}` : `КД: ${formatSecCd(effCd)}`;
-              const costTxt = sk.type==="mana" ? `Мана: ${sk.mana}` : "Без мани";
+              let effCd = 0;
+              if ((Number(sk.cd)||0) > 0){
+                if (h.specId==="fighter") effCd = warriorCdFinal(h, sk.cd);
+                else if (h.specId==="shooter") effCd = shooterCdFinal(h, sk.cd);
+                else if (h.specId==="assassin") effCd = assassinCdFinal(h, sk.cd);
+                else effCd = Math.max(1, Math.round(sk.cd * cdMultiplier(lvl)));
+              }
+              const cdBaseTxt = ((h.specId==="fighter" || h.specId==="shooter" || h.specId==="assassin") && (Number(sk.cd)||0) > 0) ? ` (з ${formatSecCd(sk.cd)})` : "";
+              const readyTxt = (Number(sk.cd)||0) <= 0 ? "Без КД" : (left>0 ? `КД: ${hms(left)}${cdBaseTxt}` : `КД: ${formatSecCd(effCd)}${cdBaseTxt}`);
+              const costTxt = (sk.type==="mana")
+                ? (()=>{
+                    const mc = manaCostsForHunter(h, sk.mana);
+                    let txt = `Мана: ${fmtNum(mc.final)} (з ${fmtNum(mc.base)})`;
+                    if (sk.upkeep && Number(sk.upkeep)>0){
+                      const interval = Math.max(1, Number(sk.upkeepInterval)||10);
+                      const uc = manaCostsForHunter(h, Number(sk.upkeep)||0, {round:false, decimals:2});
+                      const perUnit = sk.upkeepPerUnit ? " за одиницю" : "";
+                      txt += ` • Підтримка: ${fmtNum(uc.final)} / ${interval}с${perUnit} (з ${fmtNum(uc.base)} / ${interval}с${perUnit})`;
+                    }
+                    return txt;
+                  })()
+                : "Без мани";
               // no "use" button in final UI; we only show costs and cooldown numbers.
               const extra = (h.specId==="elemental" && h.specBranchId==="necro" && sk.name==="Підняття")
-                ? ` • Міньйони масштабуються від рівня гілки.`
+                ? ` • Міньйони масштабуються від рангу спеціалізації.`
                 : "";
               return `
                 <div class="skill" data-skillwrap="${escapeHtml(sk.id)}">
@@ -349,7 +514,7 @@
       <div class="branchHead">
         <div>
           <div class="branchTitle">Гілка: ${escapeHtml(b.name)}</div>
-          <div class="branchMeta">${escapeHtml(spec?spec.name:h.specId)} • Рівень: <b>${lvl}</b> / ${BRANCH.MAX_LEVEL} • ${isMagic ? `Мана відновлення: <b>2%</b> / <b>5с</b>` : `КД навиків: <b>${Math.round(cdMultiplier(lvl)*100)}%</b>`}</div>
+          <div class="branchMeta">${escapeHtml(spec?spec.name:h.specId)} • Ранг: <b>${escapeHtml(rankName)}</b> (${lvl}/${BRANCH.MAX_LEVEL}) • ${isMagic ? `Мана відновлення: <b>2%</b> / <b>5с</b>` : (h.specId==="fighter" ? `КД: <b>зменшується</b> від Сили+Витривалості (мін. 40% бази)` : (h.specId==="shooter" ? `КД: <b>зменшується</b> від Ловкість+Сприйняття (мін. 40% бази)` : (h.specId==="assassin" ? `КД: <b>зменшується</b> від Ловкість+Реакція (мін. 40% бази)` : `КД навиків: <b>${Math.round(cdMultiplier(lvl)*100)}%</b>`)))}</div>
         </div>
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end">
           <button class="btn btn--primary btn--mini" type="button" data-branchup="${escapeHtml(h.id)}" ${canUp ? "" : "disabled"}>
@@ -358,7 +523,87 @@
           <span class="pill pill--warn">${upLeft>0 ? `Доступно через ${hms(upLeft)}` : (lvl<BRANCH.MAX_LEVEL ? "Готово" : "Макс")}</span>
         </div>
       </div>
+
       ${manaLine}
+      ${passives && passives.length ? `
+        <div class="note" style="margin-top:10px">
+          <div class="note__title">Пасивні навики</div>
+          <div class="skills">
+            ${passives.map(p=>{
+              // Render passive with meaningful *final* numbers (especially for Warrior)
+              if (h.specId === "fighter"){
+                const weaponBonus = 5 * lvl;
+                const armorRed = 5 * lvl;
+                const hpLoss = Math.max(0, Math.min(100, Math.round(Number(h.hpLossPct)||0)));
+                const stacks = Math.floor(hpLoss / 10);
+                const adapt = 3 * stacks;
+
+                if (p.name === "Володіння зброєю"){
+                  return `
+                    <div class="skill skill--open">
+                      <div class="skill__btn" style="cursor:default">
+                        <div class="skill__name">${escapeHtml(p.name)}</div>
+                        <div class="skill__right">Пасивно</div>
+                      </div>
+                      <div class="skill__body" style="max-height:999px; padding:0 12px 12px">
+                        <div class="skill__desc">Бонус до шкоди: <b>+${weaponBonus}%</b> (ранг ${lvl})</div>
+                      </div>
+                    </div>
+                  `;
+                }
+
+                if (p.name === "Носіння обладунків"){
+                  return `
+                    <div class="skill skill--open">
+                      <div class="skill__btn" style="cursor:default">
+                        <div class="skill__name">${escapeHtml(p.name)}</div>
+                        <div class="skill__right">Пасивно</div>
+                      </div>
+                      <div class="skill__body" style="max-height:999px; padding:0 12px 12px">
+                        <div class="skill__desc">Зменшення вхідної шкоди: <b>−${armorRed}%</b> (ранг ${lvl})</div>
+                      </div>
+                    </div>
+                  `;
+                }
+
+                if (p.name === "Бойова адаптація"){
+                  return `
+                    <div class="skill skill--open">
+                      <div class="skill__btn" style="cursor:default">
+                        <div class="skill__name">${escapeHtml(p.name)}</div>
+                        <div class="skill__right">Пасивно</div>
+                      </div>
+                      <div class="skill__body" style="max-height:999px; padding:0 12px 12px">
+                        <div class="skill__desc">
+                          При втраті здоров’я <b>${hpLoss}%</b> → Бонус шкоди: <b>+${adapt}%</b> • Опір контролю: <b>+${adapt}%</b>
+                          <div style="margin-top:8px; display:flex; gap:10px; align-items:center; flex-wrap:wrap">
+                            <span class="pill">Втрата HP (%)</span>
+                            <input type="number" min="0" max="100" step="1" value="${hpLoss}" data-hid="${escapeHtml(h.id)}" data-hploss="1" style="width:90px" />
+                            <span class="pill">крок: 10%</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  `;
+                }
+              }
+
+              // Default: show raw description
+              return `
+                <div class="skill skill--open">
+                  <div class="skill__btn" style="cursor:default">
+                    <div class="skill__name">${escapeHtml(p.name)}</div>
+                    <div class="skill__right">Пасивно</div>
+                  </div>
+                  <div class="skill__body" style="max-height:999px; padding:0 12px 12px">
+                    <div class="skill__desc">${escapeHtml(p.desc||"")}</div>
+                  </div>
+                </div>
+              `;
+            }).join("")}
+          </div>
+        </div>
+      ` : ``}
       ${blocks.join("")}
     </div>`;
   }
@@ -799,6 +1044,51 @@ function tierSkillMult(tier){
   
   // ===== Export (.txt) =====
   
+function getPassivesForHunter(h){
+  if (!h || !h.specId) return [];
+  const db = (window.SKILLS_DB || {})[h.specId];
+  const passives = db && Array.isArray(db.passives) ? db.passives : [];
+  return passives.map(p=>Object.assign({}, p));
+}
+
+function passiveLinesForExport(h){
+  const lvl = Math.max(0, Math.min(BRANCH.MAX_LEVEL, Number(h.branchLevel)||0));
+  const passives = getPassivesForHunter(h);
+  if (!passives.length) return [];
+  const out = [];
+  // Warrior passives: show final numeric values
+  if (h.specId === "fighter"){
+    const weaponBonus = 5 * lvl;
+    const armorRed = 5 * lvl;
+    const hpLoss = Math.max(0, Math.min(100, Math.round(Number(h.hpLossPct)||0)));
+    const stacks = Math.floor(hpLoss / 10);
+    const adapt = 3 * stacks;
+    passives.forEach(p=>{
+      const pid = p.id || "";
+      if (pid === "weapon_mastery" || p.name === "Володіння зброєю"){
+        out.push(`• ${p.name}: +${weaponBonus}% шкоди (ранг ${lvl})`);
+        return;
+      }
+      if (pid === "armor_training" || p.name === "Носіння обладунків"){
+        out.push(`• ${p.name}: −${armorRed}% вхідної шкоди (ранг ${lvl})`);
+        return;
+      }
+      if (pid === "battle_adaptation" || p.name === "Бойова адаптація"){
+        out.push(`• ${p.name}: при втраті HP ${hpLoss}% → +${adapt}% шкоди, +${adapt}% опору контролю`);
+        return;
+      }
+      // default
+      out.push(`• ${p.name}${p.desc ? `: ${p.desc}` : ""}`);
+    });
+    return out;
+  }
+  // default: print description as-is
+  passives.forEach(p=> out.push(`• ${p.name}${p.desc ? `: ${p.desc}` : ""}`));
+  return out;
+}
+
+
+  
 function getUnlockedSkills(h){
   // Returns skills unlocked by current branch level.
   if (!h || !h.specId || !h.specBranchId) return [];
@@ -806,16 +1096,31 @@ function getUnlockedSkills(h){
   const all = buildBranchSkills(h.specId, h.specBranchId);
   const unlocked = (all||[]).filter(sk => (Number(sk.levelReq)||1) <= lvl);
 
-  const mult = tierSkillMult(h.tier); // -5% per better tier step
   return unlocked.map(sk=>{
     const out = Object.assign({}, sk);
     if (out.type === "cd" && typeof out.cd === "number"){
+      const mult = tierSkillMult(h.tier);
       out.cd = Math.max(1, Math.round(out.cd * mult));
     }
     if (out.type === "mana" && typeof out.mana === "number"){
-      out.mana = Math.max(0, Math.round(out.mana * mult));
+      const mc = manaCostsForHunter(h, out.mana);
+      // Keep both base and final; for compatibility, `mana` equals final.
+      out.manaBase = mc.base;
+      out.manaAfterTier = mc.afterTier;
+      out.manaFinal = mc.final;
+      out.mana = mc.final;
+      out._intDisc = mc.intDisc;
+      out._tierMult = mc.tierMult;
+      if (out.upkeep && Number(out.upkeep)>0){
+        const interval = Math.max(1, Number(out.upkeepInterval)||10);
+        const uc = manaCostsForHunter(h, Number(out.upkeep)||0, {round:false, decimals:2});
+        out.upkeepBase = uc.base;
+        out.upkeepAfterTier = uc.afterTier;
+        out.upkeepFinal = uc.final;
+        out.upkeep = uc.final;
+        out.upkeepInterval = interval;
+      }
     }
-    out._tierMult = mult;
     return out;
   });
 }
@@ -858,7 +1163,7 @@ lines.push("");
       lines.push(`Спец: ${sp ? sp.name : h.specId}`);
       if (h.specBranchId){
         lines.push(`Гілка: ${getBranchDisplayName(h.specId, h.specBranchId)}`);
-        lines.push(`Рівень гілки: ${Number(h.branchLevel)||0}`);
+        lines.push(`Ранг спеціалізації: ${specRankName(h.specId, h.specBranchId, Number(h.branchLevel)||0)}`);
       } else {
         lines.push("Гілка: —");
       }
@@ -878,10 +1183,26 @@ lines.push("");
       skills.forEach(sk=>{
         lines.push(`• ${sk.name}`);
         if (sk.desc) lines.push(`  ${sk.desc}`);
-        if (sk.type === "mana") lines.push(`  Мана: ${Math.round(Number(sk.mana)||0)}`);
+        if (sk.type === "mana"){
+          const fin = (typeof sk.manaFinal === "number") ? sk.manaFinal : Math.round(Number(sk.mana)||0);
+          const base = (typeof sk.manaBase === "number") ? sk.manaBase : null;
+          lines.push(`  Мана: ${fin}${base!==null ? ` (з ${base})` : ""}`);
+          if (sk.upkeepFinal && Number(sk.upkeepFinal)>0){
+            const ub = (typeof sk.upkeepBase === "number") ? sk.upkeepBase : null;
+            const interval = Math.max(1, Number(sk.upkeepInterval)||10);
+            lines.push(`  Підтримка: ${fmtNum(Number(sk.upkeepFinal)||0)} / ${interval}с${sk.upkeepPerUnit ? " за одиницю" : ""}${ub!==null ? ` (з ${ub} / ${interval}с${sk.upkeepPerUnit ? " за одиницю" : ""})` : ""}`);
+          }
+        }
         if (sk.type === "cd") lines.push(`  КД: ${Math.round(Number(sk.cd)||0)} с`);
       });
     }
+    lines.push("");
+
+    // Пасиви (наприклад: Воїн)
+    const pl = passiveLinesForExport(h);
+    lines.push("== Пасиви ==");
+    if (!pl.length) lines.push("—");
+    else pl.forEach(x=>lines.push(x));
     lines.push("");
 
     
@@ -1026,6 +1347,12 @@ lines.push(h.importantText ? h.importantText : "—");
     if (typeof h.lastTrainAt !== "number") h.lastTrainAt = Number(h.lastTrainAt)||0;
     if (typeof h.profile !== "number") h.profile = Number(h.profile)||0;
     if (typeof h.specId !== "string") h.specId = h.specId ? String(h.specId) : "";
+
+    // Warrior passive helper: how much HP is currently lost (0..100)
+    // Used only for "Бойова адаптація" UI readout.
+    if (typeof h.hpLossPct !== "number") h.hpLossPct = Number(h.hpLossPct)||0;
+    if (!isFinite(h.hpLossPct)) h.hpLossPct = 0;
+    h.hpLossPct = Math.max(0, Math.min(100, Math.round(h.hpLossPct)));
     if (typeof h.lore !== "string") h.lore = h.lore ? String(h.lore) : "";
     if (typeof h.loreSetAt !== "number") h.loreSetAt = Number(h.loreSetAt)||0;
 
@@ -1116,6 +1443,11 @@ ensureRiskState(h);
     const sum = STATS.reduce((a,s)=>a + (Number(h.stats[s.key])||0), 0);
     h.avg = +(sum / STATS.length).toFixed(2);
     h.tier = calcTier(h.avg);
+
+    // Міграція: Асасін тепер має 1 гілку. Старі гілки приводимо до "assassin".
+    if (h.specId === "assassin" && h.specBranchId && h.specBranchId !== "assassin"){
+      h.specBranchId = "assassin";
+    }
     h.mana = (Number(h.stats.int)||0) * 5;
     // mana current + regen (only for magic specs, but we keep pool for all)
     if (typeof h.manaCur !== "number") h.manaCur = h.mana;
@@ -1747,7 +2079,7 @@ ensureRiskState(h);
         if (!branchId){ toast("Нема гілки"); return; }
         h.specBranchId = branchId;
         h.branchLevel = 1;
-        h.branchLastUpgradeAt = Date.now(); // next upgrade in 12h
+        h.branchLastUpgradeAt = Date.now(); // TEST: next upgrade in 1s
         if (!h.skillCooldowns) h.skillCooldowns = {};
         recomputeHunter(h);
         saveHunters(hs);
@@ -1770,7 +2102,7 @@ ensureRiskState(h);
         h.branchLastUpgradeAt = Date.now();
         recomputeHunter(h);
         saveHunters(hs);
-        toast(`Рівень гілки: ${h.branchLevel}`);
+        toast(`Ранг спеціалізації: ${specRankName(h.specId, h.specBranchId, h.branchLevel)}`);
         render();
         return;
       }
@@ -1792,6 +2124,18 @@ list.addEventListener("input", (e)=>{
 
   const hid = t.getAttribute("data-hid");
   if (!hid) return;
+
+  // Warrior passive helper: HP loss % input
+  if (t.getAttribute("data-hploss")){
+    const v = Math.max(0, Math.min(100, Math.round(Number(t.value)||0)));
+    const hs = loadHunters();
+    const h = hs.find(x=>x.id===hid);
+    if (!h) return;
+    h.hpLossPct = v;
+    saveHunters(hs);
+    render();
+    return;
+  }
 
   const extra = t.getAttribute("data-extra");
   if (extra){
