@@ -643,12 +643,7 @@ function tierSkillMult(tier){
         h.baseStats.per = (Number(h.baseStats.per)||0) + 3;
         return { msg: "Вступ успішний: +3 Інтелект, +3 Воля, +3 Сприйняття" };
       }
-          ,onJoin(h){
-        if (!h.baseStats) h.baseStats = {};
-        h.baseStats.agi = (Number(h.baseStats.agi)||0) + 3;
-        h.baseStats.per = (Number(h.baseStats.per)||0) + 3;
-        return { msg: "Вступ успішний: +3 Ловкість, +3 Сприйняття" };
-      }
+          
     },
     {
       id: "baal",
@@ -736,6 +731,13 @@ function tierSkillMult(tier){
         ];
         if (rank >= 3) lines.push("Атака з тіні: бонус");
         return lines;
+      },
+      onJoin(h){
+        if (!h.baseStats) h.baseStats = {};
+        h.baseStats.agi = (Number(h.baseStats.agi)||0) + 3;
+        h.baseStats.per = (Number(h.baseStats.per)||0) + 3;
+        h.baseStats.rea = (Number(h.baseStats.rea)||0) + 3;
+        return { msg: "Вступ успішний: +3 Ловкість, +3 Сприйняття, +3 Реакція" };
       }
     },
   ];
