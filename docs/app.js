@@ -12,9 +12,9 @@
 
     // Timers (REAL)
     GEN_COOLDOWN_MS: 12 * 60 * 60 * 1000,        // 12h generation cooldown
-    TRAIN_COOLDOWN_MS: 14 * 60 * 60 * 1000,      // 12h training + 2h rest,      // 12h training + 2h rest
-    TRAIT_GAIN_COOLDOWN_MS: 30 * 60 * 1000,      // 30m get a trait,      // 30m get a trait
-    TRAIT_TRAIN_COOLDOWN_MS: 14 * 60 * 60 * 1000,      // 12h training + 2h rest,     // 30m train a trait
+  TRAIN_COOLDOWN_MS: 14 * 60 * 60 * 1000,   // 14h training cooldown
+  TRAIT_GAIN_COOLDOWN_MS: 30 * 60 * 1000,   // 30m cooldown to get a trait
+  TRAIT_TRAIN_COOLDOWN_MS: 30 * 60 * 1000,  // 30m cooldown to train a trait
     CULT_UP_COOLDOWN_MS: 24 * 60 * 60 * 1000,    // 24h cult rank up
 
     // Training
@@ -982,6 +982,8 @@ function tierSkillMult(tier){
         h.baseStats.agi = (Number(h.baseStats.agi)||0) + 3;
         h.baseStats.per = (Number(h.baseStats.per)||0) + 3;
         h.baseStats.rea = (Number(h.baseStats.rea)||0) + 3;
+        if (!Array.isArray(h.cultMarks)) h.cultMarks = [];
+        h.cultMarks.push("1 хв використання контролю тіні = -5% очків розуму.");
         return { msg: "Вступ успішний: +3 Ловкість, +3 Сприйняття, +3 Реакція" };
       }
     },
@@ -1300,8 +1302,11 @@ lines.push(h.importantText ? h.importantText : "—");
 
   // ===== Normalization / Migration =====
   function ensureRiskState(h){
+    if (!h) return;
     if (!h.riskPassed || typeof h.riskPassed !== "object") h.riskPassed = {};
-    if (typeof h.permaDebuff !== "number") h.permaDebuff = 0;
+    if (typeof h.permaDebuff !== "number") h.permaDebuff = Number(h.permaDebuff)||0;
+    if (typeof h.checksBlocked !== "boolean") h.checksBlocked = !!h.checksBlocked;
+    if (typeof h.trainBlocked !== "boolean") h.trainBlocked = !!h.trainBlocked;
   }
 
   function normalizeHunter(h){
@@ -1378,9 +1383,10 @@ ensureRiskState(h);
   // ===== Risk mechanics =====
   function rollRiskOutcome(){
     const r = Math.random();
-    if (r < 0.60) return "death";
-    if (r < 0.80) return "debuff";
-    return "ok";
+    // 20% success • 20% failure (perma debuff + блок) • 60% death
+    if (r < 0.20) return "ok";
+    if (r < 0.40) return "debuff";
+    return "death";
   }
 
   function applyPermanentDebuffAll(h){
@@ -1389,6 +1395,10 @@ ensureRiskState(h);
     if (!h.baseStats) h.baseStats = {};
     STATS.forEach(s => { h.baseStats[s.key] = (Number(h.baseStats[s.key])||0) * 0.70; });
     h.permaDebuff = 0.30;
+    // Risk failure: hunter can no longer attempt risk checks and training is blocked
+    h.checksBlocked = true;
+    h.trainBlocked = true;
+    h.status = h.status || "Провалившийся";
   }
 
   function clampUnpassedTo45(h, beforeStats){
@@ -1400,7 +1410,9 @@ ensureRiskState(h);
       const k = s.key;
       const v = Number((h.baseStats||{})[k])||0;
       const before = beforeStats ? (Number(beforeStats[k])||0) : null;
-      const shouldCheck = (beforeStats ? (before < CFG.RISK_THRESHOLD) : true);
+      // Only clamp stats that *crossed* the threshold in this action (<=45 -> >45).
+      // If a stat was already above the threshold before the action, we don't touch it.
+      const shouldCheck = (beforeStats ? (before <= CFG.RISK_THRESHOLD) : true);
       if (shouldCheck && !h.riskPassed[k] && v > CFG.RISK_THRESHOLD){
         h.baseStats[k] = CFG.RISK_THRESHOLD;
       }
@@ -1414,7 +1426,7 @@ ensureRiskState(h);
       const k = s.key;
       const before = Number(beforeStats[k])||0;
       const after  = Number(afterStats[k])||0;
-      if (!h.riskPassed[k] && before < CFG.RISK_THRESHOLD && after >= CFG.RISK_THRESHOLD){
+      if (!h.riskPassed[k] && before <= CFG.RISK_THRESHOLD && after > CFG.RISK_THRESHOLD){
         crossed.push(k);
       }
     });
@@ -1555,6 +1567,8 @@ ensureRiskState(h);
 
       riskPassed: {},
       permaDebuff: 0,
+      checksBlocked: false,
+      trainBlocked: false,
     };
     return recomputeHunter(h);
   }
@@ -1722,18 +1736,46 @@ ensureRiskState(h);
     if (h.cultId) return {ok:false, msg:"Вступ незворотній: культ вже є"};
     const cult = getCult(cultId);
     if (!cult) return {ok:false, msg:"Невідомий культ"};
+    // snapshot before (for risk crossing detection)
+    const before = {}; STATS.forEach(s=>before[s.key]=Number((h.baseStats||{})[s.key])||0);
+
     h.cultId = cultId;
     h.cultRank = 0;
     h.cultLastUpgradeAt = Date.now(); // lock for 24h from join
     let joinMsg = `Вступив: ${cult.name}`;
+
     if (cult.onJoin){
       const out = cult.onJoin(h, choice);
       if (out && out.dead){
-        // mark for caller to delete hunter
         return {ok:false, dead:true, msg: out.msg || "Хант помер"};
       }
       if (out && out.msg) joinMsg = out.msg;
     }
+
+    const after = {}; STATS.forEach(s=>after[s.key]=Number((h.baseStats||{})[s.key])||0);
+    const crossed = detectNewCrossings(before, after, h);
+
+    if (crossed.length){
+      ensureRiskState(h);
+      if (h.checksBlocked){
+        clampUnpassedTo45(h, before);
+        joinMsg += ` | Провалившийся: перевірки недоступні. ${crossed.join(", ")} обмежено до ${CFG.RISK_THRESHOLD}.`;
+      } else {
+        const r = rollRiskOutcome();
+        if (r === "death"){
+          return {ok:false, dead:true, msg: "Ризик 45+: смерть. Хант помер під час вступу."};
+        }
+        if (r === "debuff"){
+          applyPermanentDebuffAll(h);
+          clampUnpassedTo45(h, before);
+          joinMsg += " | Ризик 45+: провал. -30% до всіх статів, тренування заблоковано, статус: Провалившийся.";
+        } else {
+          crossed.forEach(k => h.riskPassed[k] = true);
+          joinMsg += " | Ризик 45+: успіх. Стати можуть рости вище 45.";
+        }
+      }
+    }
+
     recomputeHunter(h);
     return {ok:true, msg: joinMsg};
   }
@@ -2245,8 +2287,9 @@ list.addEventListener("input", (e)=>{
     }
 
     function canTrain(h){
+      if (h && h.trainBlocked) return { ok:false, left: 0, reason: "blocked" };
       const left = (Number(h.lastTrainAt)||0) + CFG.TRAIN_COOLDOWN_MS - Date.now();
-      return { ok: left <= 0, left: Math.max(0,left) };
+      return { ok: left <= 0, left: Math.max(0,left), reason: left<=0 ? "" : "cooldown" };
     }
 
     function simulateTrainingResult(h, complex, rolls){
@@ -2315,7 +2358,7 @@ list.addEventListener("input", (e)=>{
       const h = getHunter();
       if (!h){ cd && (cd.textContent="—"); return; }
       const c = canTrain(h);
-      cd && (cd.textContent = hms(c.left));
+      cd && (cd.textContent = (c.reason==="blocked" ? "Заблоковано" : hms(c.left)));
       trainBtn.disabled = !c.ok;
     }
 
@@ -2336,6 +2379,11 @@ list.addEventListener("input", (e)=>{
       const sim = simulateTrainingResult(h, complex, rolls);
       const crossed = detectNewCrossings(sim.before, sim.after, h);
 
+      if (crossed.length && h.checksBlocked){
+        toast("Провалившийся: перевірки недоступні. Стати вище 45 не піднімаються.");
+        return;
+      }
+
       const doApply = ()=>{
         if (crossed.length){
           const out = rollRiskOutcome();
@@ -2349,9 +2397,9 @@ list.addEventListener("input", (e)=>{
           }
           if (out === "debuff"){
             applyPermanentDebuffAll(h);
-            toast("Ризик: -30% до всього назавжди.");
+            toast("Ризик: провал. -30% до всіх статів, тренування заблоковано, статус: Провалившийся.");
           } else {
-            toast("Ризик: вижив.");
+            toast("Ризик: успіх. Стати можуть рости вище 45.");
           }
           // Allow ONLY those crossed stats to grow >45 from now on
           crossed.forEach(k => h.riskPassed[k] = true);
@@ -2372,7 +2420,7 @@ list.addEventListener("input", (e)=>{
       if (crossed.length){
         openRiskModal({
           title: "Перехід 45+ — ризик",
-          text: `Тренування підніме стат(и) до 45+: ${crossed.join(", ")}.\nПродовжити?\n60% смерть • 20% -30% до всього • 20% вижив.`,
+          text: `Тренування підніме стат(и) до 45+: ${crossed.join(", ")}.\nПродовжити?\n20% успіх • 20% провал (-30% та блок) • 60% смерть.`,
           onStop: ()=>toast("Зупинився."),
           onContinue: doApply
         });
@@ -2623,7 +2671,7 @@ list.addEventListener("input", (e)=>{
             if (hh.cultId){ toast("Культ вже є. Вступ незворотній."); return; }
             // Extra warning for Baal: 50/50 death on join
             const warn = (c.id === "baal")
-              ? `Вступити в культ "${c.name}"? Це НЕЗВОРОТНО.\n\nУВАГА: при вступі 50% шанс СМЕРТІ ханта.`
+              ? `Вступити в культ "${c.name}"? Це НЕЗВОРОТНО.\n\nУВАГА: якщо стат перейде 45+, буде ризик: 20% успіх • 20% провал (-30% та блок) • 60% смерть.`
               : `Вступити в культ "${c.name}"? Це незворотно.`;
             if (!confirm(warn)) return;
             const res = joinCult(hh, c.id, choice);
