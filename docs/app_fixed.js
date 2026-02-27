@@ -946,30 +946,25 @@ ensureRiskState(h);
     h.permaDebuff = 0.30;
   }
 
-  function clampUnpassedTo45(h, beforeStats){
+  function clampUnpassedTo45(h){
     ensureRiskState(h);
     STATS.forEach(s=>{
       const v = Number(h.stats[s.key])||0;
-      const before = beforeStats ? (Number(beforeStats[s.key])||0) : null;
-      // Only clamp stats that were not already above the threshold before this operation.
-      // Legacy/imported stats >45 must not be re-checked or clamped.
-      const shouldCheck = (beforeStats ? (before <= CFG.RISK_THRESHOLD) : true);
-      if (shouldCheck && !h.riskPassed[s.key] && v > CFG.RISK_THRESHOLD){
+      if (!h.riskPassed[s.key] && v > CFG.RISK_THRESHOLD){
         h.stats[s.key] = CFG.RISK_THRESHOLD;
       }
     });
   }
 
   function detectNewCrossings(beforeStats, afterStats, h){
-    ensureRiskState(h);
+    // Risk check triggers ONLY when a stat crosses the 45 threshold in this action:
+    // before <= 45  AND  after > 45
     const crossed = [];
     STATS.forEach(s=>{
       const k = s.key;
       const before = Number(beforeStats[k])||0;
       const after  = Number(afterStats[k])||0;
-      // Trigger risk ONLY when crossing from <=45 to >45.
-      // If a stat is already >45, we don't trigger risk for it.
-      if (!h.riskPassed[k] && before <= CFG.RISK_THRESHOLD && after > CFG.RISK_THRESHOLD){
+      if (before <= CFG.RISK_THRESHOLD && after > CFG.RISK_THRESHOLD){
         crossed.push(k);
       }
     });
@@ -1844,14 +1839,11 @@ list.addEventListener("input", (e)=>{
           } else {
             toast("Ризик: вижив.");
           }
-          // Allow ONLY those crossed stats to grow >45 from now on
-          crossed.forEach(k => h.riskPassed[k] = true);
         }
 
         applyTrainingWithRolls(h, complex, rolls);
 
         // IMPORTANT: only stats with riskPassed can go above 45 (training). Others clamped.
-        clampUnpassedTo45(h, sim.before);
 
         recomputeHunter(h);
         saveHunters(hunters);
@@ -1863,7 +1855,7 @@ list.addEventListener("input", (e)=>{
       if (crossed.length){
         openRiskModal({
           title: "Перехід 45+ — ризик",
-          text: `Тренування підніме стат(и) до 45+: ${crossed.join(", ")}.\nПродовжити?\n60% смерть • 20% -30% до всього • 20% вижив.`,
+          text: `Тренування підніме стат(и) понад 45: ${crossed.join(", ")}.\nПродовжити?\n60% смерть • 20% -30% до всього • 20% вижив.`,
           onStop: ()=>toast("Зупинився."),
           onContinue: doApply
         });
