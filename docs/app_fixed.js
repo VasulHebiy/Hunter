@@ -11,7 +11,7 @@
     MAX_HUNTERS: 5,
 
     // Timers (REAL)
-    GEN_COOLDOWN_MS: 12 * 60 * 60 * 1000,        // 12h generation cooldown
+    GEN_COOLDOWN_MS: 28 * 60 * 60 * 1000,        // 12h generation cooldown
     TRAIN_COOLDOWN_MS: 14 * 60 * 60 * 1000,      // 12h training + 2h rest
     TRAIT_GAIN_COOLDOWN_MS: 30 * 60 * 1000,      // 30m get a trait
     TRAIT_TRAIN_COOLDOWN_MS: 30 * 60 * 1000,     // 30m train a trait
@@ -72,7 +72,7 @@
   // Branch level: 1..5, upgrade once per 12h
   const BRANCH = {
     MAX_LEVEL: 5,
-    UPGRADE_COOLDOWN_MS: 12 * 60 * 60 * 1000,
+    UPGRADE_COOLDOWN_MS: 28 * 60 * 60 * 1000,
   };
 
   // Which specs are "magical" (spend mana)
