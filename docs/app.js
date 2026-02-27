@@ -906,7 +906,9 @@ if (Array.isArray(h.traits) && h.traits.length){
 lines.push("");
 
     lines.push("== Культ ==");
-    if (h.cultId){
+    if ((h.status||"")==="Атеїст"){
+      lines.push("Атеїст");
+    } else if (h.cultId){
       lines.push(`${h.cultName} — ${h.cultRankName}`);
       const st = Array.isArray(h.cultStatuses) ? h.cultStatuses : [];
       if (st.length) lines.push("Статуси: " + st.join(" • "));
@@ -1177,7 +1179,7 @@ ensureRiskState(h);
 
   function createHunterRaw(){
     const baseStats = {};
-    STATS.forEach(s => baseStats[s.key] = randInt(5,20));
+    STATS.forEach(s => baseStats[s.key] = randInt(6,18)); // stats now 6..18
     const h = {
       id: "h_" + Math.random().toString(16).slice(2) + "_" + Date.now(),
       name: null,
@@ -1225,6 +1227,9 @@ ensureRiskState(h);
       riskPassed: {},
       permaDebuff: 0,
     };
+  // status on creation: 80% atheist
+    if (Math.random()<0.8){ h.status = "Атеїст"; }
+
     return recomputeHunter(h);
   }
 
@@ -1388,6 +1393,7 @@ ensureRiskState(h);
   }
 
   function joinCult(h, cultId, choice){
+    if ((h.status||"")==="Атеїст") return {ok:false, msg:"Атеїст не може вступити в культ"};
     if (h.cultId) return {ok:false, msg:"Вступ незворотній: культ вже є"};
     const cult = getCult(cultId);
     if (!cult) return {ok:false, msg:"Невідомий культ"};
@@ -1910,7 +1916,7 @@ list.addEventListener("input", (e)=>{
       const before={}; STATS.forEach(s=>before[s.key]=Number((h.baseStats||{})[s.key])||0);
       const after={...before};
       for (let i=0;i<rolls.length;i++){
-        const pts=rolls[i];
+        const pts=rolls[i]*0.5; // nerf training points x0.5
         complex.weights.forEach(([statKey,w])=>{
           const rawGain=pts*w;
           const eff=efficiency(Number(after[statKey])||0);
@@ -1923,7 +1929,7 @@ list.addEventListener("input", (e)=>{
     function applyTrainingWithRolls(h, complex, rolls){
       if (!h.baseStats) h.baseStats = {};
       for (let i=0;i<rolls.length;i++){
-        const pts=rolls[i];
+        const pts=rolls[i]*0.5; // nerf training points x0.5
 
         complex.weights.forEach(([statKey,w])=>{
           const rawGain=pts*w;
@@ -2208,7 +2214,11 @@ list.addEventListener("input", (e)=>{
       }
       normalizeHunter(h);
 
-      if (!h.cultId){
+      if ((h.status||"")==="Атеїст"){
+        currentBox.textContent = "Атеїст";
+        cdEl.textContent = "—";
+        upBtn.disabled = true;
+      } else if (!h.cultId){
         currentBox.textContent = "Культ не вибраний (вступ незворотній).";
         cdEl.textContent = "—";
         upBtn.disabled = true;
@@ -2247,9 +2257,9 @@ list.addEventListener("input", (e)=>{
             </div>
             <div class="actions" style="justify-content:flex-start; margin-top:10px">
               ${c.id==="baal"
-                ? `<button class="btn btn--primary" type="button" data-join="baal" data-choice="power" ${h.cultId ? "disabled" : ""}>Сила</button>
-                   <button class="btn btn--primary" type="button" data-join="baal" data-choice="mind" ${h.cultId ? "disabled" : ""}>Розум</button>`
-                : `<button class="btn btn--primary" type="button" data-join="${escapeHtml(c.id)}" ${h.cultId ? "disabled" : ""}>Вступити (незворотно)</button>`}
+                ? `<button class="btn btn--primary" type="button" data-join="baal" data-choice="power" ${(h.cultId || (h.status||"")==="Атеїст") ? "disabled" : ""}>Сила</button>
+                   <button class="btn btn--primary" type="button" data-join="baal" data-choice="mind" ${(h.cultId || (h.status||"")==="Атеїст") ? "disabled" : ""}>Розум</button>`
+                : `<button class="btn btn--primary" type="button" data-join="${escapeHtml(c.id)}" ${(h.cultId || (h.status||"")==="Атеїст") ? "disabled" : ""}>Вступити (незворотно)</button>`}
             </div>
           </div>
         `;
@@ -2305,7 +2315,11 @@ list.addEventListener("input", (e)=>{
       const h = hs.find(x=>x.id===hunterSelect.value);
       if (!h) return;
       normalizeHunter(h);
-      if (!h.cultId){ toast("Нема культу"); return; }
+      if ((h.status||"")==="Атеїст"){
+        currentBox.textContent = "Атеїст";
+        cdEl.textContent = "—";
+        upBtn.disabled = true;
+      } else if (!h.cultId){ toast("Нема культу"); return; }
       const left = cultUpgradeLeft(h);
       if (left>0){ toast(`КД: ${hms(left)}`); return; }
       if (!confirm("Підвищити ранг культу? (раз на добу)")) return;
@@ -2329,7 +2343,11 @@ list.addEventListener("input", (e)=>{
         return;
       }
       normalizeHunter(h);
-      if (!h.cultId){
+      if ((h.status||"")==="Атеїст"){
+        currentBox.textContent = "Атеїст";
+        cdEl.textContent = "—";
+        upBtn.disabled = true;
+      } else if (!h.cultId){
         cdEl.textContent = "—";
         upBtn.disabled = true;
         currentBox.textContent = "Культ не вибраний (вступ незворотній).";
