@@ -14,7 +14,7 @@
     GEN_COOLDOWN_MS: 28 * 60 * 60 * 1000,        // 12h generation cooldown
     TRAIN_COOLDOWN_MS: 14 * 60 * 60 * 1000,      // 12h training + 2h rest,      // 12h training + 2h rest
     TRAIT_GAIN_COOLDOWN_MS: 30 * 60 * 1000,      // 30m get a trait,      // 30m get a trait
-    TRAIT_TRAIN_COOLDOWN_MS: 14 * 60 * 60 * 1000,      // 12h training + 2h rest,     // 30m train a trait
+    TRAIT_TRAIN_COOLDOWN_MS: 30 * 60 * 1000,      // 12h training + 2h rest,     // 30m train a trait
     CULT_UP_COOLDOWN_MS: 24 * 60 * 60 * 1000,    // 24h cult rank up
 
     // Training
@@ -725,6 +725,7 @@ function tierSkillMult(tier){
         const cdMin = Math.max(1, cdMinRaw);             // мінімум 1 хв, щоб не було 0
         const lines = [
           "Контроль тіней",
+          "Контроль тіні: 0–1 хв = −5% очків розуму; кожна наступна хвилина ще −5%",
           `Тривалість: ${durMin} хв`,
           `Відкат: ${cdMin} хв`,
           "У тіні: коротка невидимість / маскування",
