@@ -334,8 +334,8 @@ a{color:inherit}
 .skill__name{font-weight:900; font-size:13px}
 .skill__right{display:flex; align-items:center; gap:8px; color:var(--muted); font-size:12px; font-weight:800}
 .skill__body{max-height:0; overflow:hidden; transition:max-height .22s ease; padding:0 12px}
-.skill--open .skill__body{max-height:240px; padding:0 12px 12px}
-.skill__desc{color:var(--muted); font-size:12px; line-height:1.4; margin-top:8px}
+.skill--open .skill__body{max-height:5000px; padding:0 12px 12px}
+.skill__desc{color:var(--muted); font-size:12px; line-height:1.4; margin-top:8px; white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word}
 .skill__actions{display:flex; gap:10px; flex-wrap:wrap; margin-top:10px}
 .btn--mini{padding:8px 10px; border-radius:12px; font-size:12px; font-weight:900}
 
